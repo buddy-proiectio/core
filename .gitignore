@@ -37,10 +37,9 @@ MANIFEST
 *.sqlite3
 
 # Project specific outputs/data
-daily_news_*.json
-filtered_news.json
 sieve.log
 *.json
+extracted_facts_*.txt
 
 # OS generated files
 .DS_Store
