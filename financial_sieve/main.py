@@ -97,7 +97,7 @@ def get_headers() -> dict:
 # Target Keywords Dictionary
 TARGET_KEYWORDS: Dict[str, List[str]] = {
     "Macro": ["FOMC", "CPI", "Fed", "Interest rate"],
-    "Crypto": ["Bitcoin", "BTC", "ETF"],
+    "Crypto": ["Bitcoin", "BTC"],
     "US Core Tech": [
         "Tesla",
         "TSLA",
@@ -114,12 +114,13 @@ TARGET_KEYWORDS: Dict[str, List[str]] = {
         "MSFT",
         "Meta",
         "META",
-        "OpenAI"
+        "OpenAI",
     ],
     "Future Tech/Others": [
         "Eli Lilly",
         "Novo Nordisk",
         "SpaceX",
+        "NASA",
         "Broadcom",
         "AVGO",
         "Micron",
