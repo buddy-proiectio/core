@@ -1,6 +1,15 @@
+"""
+The Sorter (Article Categorization & Routing Bot)
+
+This script processes article data and organizes them into specific categories
+based on matched keywords. It applies a routing map to sort articles into
+predefined groups such as Bitcoin, AI, Semiconductor, and Software.
+"""
+
 import json
 import os
 import sys
+import glob
 
 
 def sort_articles_by_category(articles: list) -> dict:
@@ -15,7 +24,7 @@ def sort_articles_by_category(articles: list) -> dict:
         "Semiconductor": ["Nvidia", "NVDA", "Broadcom", "AVGO", "Micron", "MU", "AMD"],
         "AI": ["Anthropic", "OpenAI"],
         "Bio": ["Eli Lilly", "LLY", "Novo Nordisk", "NVO", "FDA"],
-        "Space": ["SpaceX", "NASA"],
+        "Aerospace": ["SpaceX", "NASA"],
         "Software": [
             "Palantir",
             "PLTR",
@@ -64,7 +73,7 @@ def sort_articles_by_category(articles: list) -> dict:
                 assigned = True
                 break
 
-        # Fallback: If no keywords matched (or list was empty), assign to "기타"
+        # Fallback: If no keywords matched (or list was empty), assign to "Others"
         if not assigned:
             categorized_articles["Others"].append(article)
 
@@ -76,7 +85,15 @@ if __name__ == "__main__":
     # Test script loading the provided daily news file
     # Adjust path to the root folder where the JSON file lives.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    target_json_path = os.path.join(base_dir, "daily_news_20260223.json")
+    if len(sys.argv) > 1:
+        target_json_path = sys.argv[1]
+    else:
+        files = glob.glob(os.path.join(base_dir, "daily_news_*.json"))
+        if not files:
+            print("Error: Could not find any daily_news_*.json")
+            sys.exit(1)
+        target_json_path = max(files, key=os.path.getmtime)
+        print(f"Auto-selected latest file: {target_json_path}")
 
     if not os.path.exists(target_json_path):
         print(f"Error: Could not find {target_json_path}")
@@ -108,7 +125,7 @@ if __name__ == "__main__":
         if not items:
             continue
 
-        # Clean the category name for safe file paths (though Korean characters are fine)
+        # Clean the category name for safe file paths (spaces replaced with underscores)
         safe_category = category.replace(" ", "_")
         out_filename = f"{safe_category}_sorted_{date_str}.json"
         out_path = os.path.join(base_dir, out_filename)
