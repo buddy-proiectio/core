@@ -1,9 +1,9 @@
 """
-Phase 1: The Sieve (Data Gathering & Rule-based Filtering Bot)
+The Sieve (Data Gathering & Rule-based Filtering Bot)
 
 This script continuously fetches data from various configured RSS feeds and APIs.
 It applies strict Regex/Keyword filtering based on a predefined dictionary and
-saves matched results to a daily rolling JSON file using the Australia/Brisbane timezone.
+saves matched results to a daily rolling JSON file using the local timezone.
 
 Supported Sources:
 1. SEC EDGAR 8-K for specified tickers (RSS)
@@ -362,11 +362,11 @@ def fetch_weekly_schedule(finnhub_api_key: str) -> dict:
     end_date = dates_to_check[-1].strftime("%Y-%m-%d")
 
     schedule_dict = {}
-    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-    # Initialize dictionary keys with Korean formatting
+    # Initialize dictionary keys with English formatting
     for d in dates_to_check:
-        day_str = f"{d.month}월 {d.day}일 ({weekdays[d.weekday()]})"
+        day_str = f"{d.strftime('%b')} {d.day} ({weekdays[d.weekday()]})"
         schedule_dict[day_str] = []
 
     # --------------------------------------------------------------------------
@@ -399,8 +399,8 @@ def fetch_weekly_schedule(finnhub_api_key: str) -> dict:
                     # FF's XML date format is `m-d-Y`
                     event_date = datetime.strptime(date_str, "%m-%d-%Y").date()
                     if event_date in dates_to_check:
-                        day_str = f"{event_date.month}월 {event_date.day}일 ({weekdays[event_date.weekday()]})"
-                        formatted_event = f"★ [매크로] {title}"
+                        day_str = f"{event_date.strftime('%b')} {event_date.day} ({weekdays[event_date.weekday()]})"
+                        formatted_event = f"★ [Macro] {title}"
                         if formatted_event not in schedule_dict[day_str]:
                             schedule_dict[day_str].append(formatted_event)
 
@@ -427,8 +427,8 @@ def fetch_weekly_schedule(finnhub_api_key: str) -> dict:
                         if date_str:
                             event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
                             if event_date in dates_to_check:
-                                day_str = f"{event_date.month}월 {event_date.day}일 ({weekdays[event_date.weekday()]})"
-                                formatted_event = f"★ [실적] {ticker} 어닝콜"
+                                day_str = f"{event_date.strftime('%b')} {event_date.day} ({weekdays[event_date.weekday()]})"
+                                formatted_event = f"★ [Earnings] {ticker} Earnings Call"
                                 if formatted_event not in schedule_dict[day_str]:
                                     schedule_dict[day_str].append(formatted_event)
             else:
