@@ -33,20 +33,20 @@ def setup_logger(log_file: str):
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # 기본 핸들러 초기화 (중복 방지)
+    # Reset default handler
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # 파일 출력용 평문 포매터
+    # File output formatter
     file_formatter = logging.Formatter(
         "%(asctime)s - %(levelname)-8s | %(message)s", datefmt="%H:%M:%S"
     )
 
-    # 콘솔 출력용 핸들러 (색상 포함)
+    # Console output handler (with color)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ColoredFormatter())
 
-    # 파일 출력용 핸들러
+    # File output handler
     file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
     file_handler.setFormatter(file_formatter)
 
