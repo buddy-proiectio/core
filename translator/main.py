@@ -111,11 +111,11 @@ def process_line(line: str) -> str:
         ):
             return line_content + ("\n" if original_endswith_newline else "")
 
-    # 3) Dates: Report Header (e.g., ## 20260224 Report -> ## 2026년 2월 24일 보고서)
-    m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})\s+Report$", stripped_line)
+    # 3) Dates: Report Header (e.g., ## 20260224 -> ## 2026년 2월 24일 Alpha Signal
+    m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped_line)
     if m_report:
         year, month, day = m_report.groups()
-        replaced = f"## {year}년 {int(month)}월 {int(day)}일 보고서"
+        replaced = f"## {year}년 {int(month)}월 {int(day)}일 Alpha Signal"
         return line_content.replace(stripped_line, replaced) + (
             "\n" if original_endswith_newline else ""
         )
