@@ -15,7 +15,7 @@ LOG_FILE = "logs/sorter.log"
 
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
 setup_logger(LOG_FILE)
@@ -91,15 +91,17 @@ def sort_articles_by_category(articles: list) -> dict:
     return categorized_articles
 
 
-def main():
+def run_sorter():
     try:
         # Test script loading the provided daily news file
         # Adjust path to the root folder where the JSON file lives.
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(base_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
         if len(sys.argv) > 1:
             target_json_path = sys.argv[1]
         else:
-            files = glob.glob(os.path.join(base_dir, "daily_news_*.json"))
+            files = glob.glob(os.path.join(data_dir, "daily_news_*.json"))
             if not files:
                 logger.error("Error: Could not find any daily_news_*.json")
                 sys.exit(1)
@@ -139,7 +141,7 @@ def main():
             # Clean the category name for safe file paths (spaces replaced with underscores)
             safe_category = category.replace(" ", "_")
             out_filename = f"{safe_category}_sorted_{date_str}.json"
-            out_path = os.path.join(base_dir, out_filename)
+            out_path = os.path.join(data_dir, out_filename)
 
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(items, f, ensure_ascii=False, indent=2)
@@ -149,7 +151,3 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutdown signal received. Process terminating.")
         sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()

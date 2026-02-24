@@ -24,7 +24,7 @@ except ImportError:
 
 LOG_FILE = "logs/cio.log"
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
 setup_logger(LOG_FILE)
@@ -155,25 +155,32 @@ def generate_cio_commentary(
     return response.choices[0].message.content.strip()
 
 
-def main():
+def run_cio():
     try:
         # Identify today's date for file paths
         today_str = datetime.now().strftime("%Y%m%d")
 
         logging.info(f"Starting CIO Pipeline for {today_str}")
 
-        news_file = f"daily_news_{today_str}.json"
-        facts_file = f"extracted_facts_{today_str}.txt"
-        output_file = f"final_newsletter_{today_str}.txt"
+        data_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+        )
+        os.makedirs(data_dir, exist_ok=True)
+
+        news_file = os.path.join(data_dir, f"daily_news_{today_str}.json")
+        facts_file = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
+        output_file = os.path.join(data_dir, f"final_report_{today_str}.txt")
 
         # Fallback finding latest files if today's don't exist
         if not os.path.exists(news_file):
-            json_files = sorted(glob.glob("daily_news_*.json"))
+            json_files = sorted(glob.glob(os.path.join(data_dir, "daily_news_*.json")))
             if json_files:
                 news_file = json_files[-1]
 
         if not os.path.exists(facts_file):
-            txt_files = sorted(glob.glob("extracted_facts_*.txt"))
+            txt_files = sorted(
+                glob.glob(os.path.join(data_dir, "extracted_facts_*.txt"))
+            )
             if txt_files:
                 facts_file = txt_files[-1]
 
@@ -215,8 +222,8 @@ def main():
             commentary = "Error generating commentary."
 
         # 5. Merge output to target format
-        logging.info("Merging content into final newsletter format...")
-        newsletter = (
+        logging.info("Merging content into final report format...")
+        report = (
             f"## {today_str}\n\n"
             "### Daily Point\n"
             f"{market_text}\n\n"
@@ -228,14 +235,10 @@ def main():
 
         # 6. Save final compiled string
         with open(output_file, "w", encoding="utf-8") as f:
-            f.write(newsletter)
+            f.write(report)
 
-        logging.info(f"Newsletter successfully generated and saved to {output_file}")
+        logging.info(f"Report successfully generated and saved to {output_file}")
 
     except KeyboardInterrupt:
         logger.info("Shutdown signal received. Process terminating.")
         return None
-
-
-if __name__ == "__main__":
-    main()

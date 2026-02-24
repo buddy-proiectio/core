@@ -64,7 +64,7 @@ LOG_FILE = "logs/sieve.log"
 
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
 setup_logger(LOG_FILE)
@@ -238,7 +238,7 @@ def generate_dynamic_rss_feeds() -> Dict[str, str]:
 
     # 4. X Gurus via Nitter
     for guru in X_GURUS:
-        feeds[f"X Guru @{guru}"] = f"https://nitter.net/{guru}/rss"
+        feeds[f"X, @{guru}"] = f"https://nitter.net/{guru}/rss"
 
     return feeds
 
@@ -375,7 +375,7 @@ def fetch_weekly_schedule(finnhub_api_key: str) -> dict:
         import xml.etree.ElementTree as ET
 
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
 
         root = ET.fromstring(response.content)
@@ -413,7 +413,7 @@ def fetch_weekly_schedule(finnhub_api_key: str) -> dict:
         try:
             logger.info("Fetching weekly earnings schedule via Finnhub API...")
             finnhub_url = f"https://finnhub.io/api/v1/calendar/earnings?from={start_date}&to={end_date}&token={finnhub_api_key}"
-            response = requests.get(finnhub_url, timeout=10)
+            response = requests.get(finnhub_url, timeout=30)
 
             if response.status_code == 200:
                 data = response.json()
@@ -546,6 +546,9 @@ def process_rss_feed(feed_name: str, feed_url: str) -> None:
             pub_iso = pub_dt.isoformat()
 
             title = entry.get("title", "").strip()
+            if feed_name.startswith("X, @"):
+                title = f"{title} ({feed_name})"
+
             summary_html = entry.get("summary", "") or entry.get("description", "")
             summary = strip_html_tags(summary_html)
 
@@ -621,7 +624,12 @@ def save_and_reset() -> None:
     }
 
     try:
-        with open(filename, "w", encoding="utf-8") as f:
+        data_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+        )
+        os.makedirs(data_dir, exist_ok=True)
+        filepath = os.path.join(data_dir, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(master_payload, f, ensure_ascii=False, indent=2)
         logger.info(
             f"Successfully saved Master Daily Payload ({len(daily_articles_cache)} articles) to {filename}."
@@ -649,26 +657,26 @@ def the_sieve_job() -> None:
 
 
 def main():
-    logger.info(f"Initializing Phase 1: The Sieve Bot ({LOCAL_TZ_NAME} Timezone)...")
+    logger.info(f"Initializing The Sieve Bot ({LOCAL_TZ_NAME} Timezone)...")
 
-    # Run the fetch cycle immediately on start
-    the_sieve_job()
-
-    # 1. Schedule the repeating interval
-    schedule.every(CHECK_INTERVAL_MINUTES).minutes.do(the_sieve_job)
-
-    # 2. Schedule the Daily Save & Reset explicitly using the Local Timezone at 04:50
-    # The `schedule` library accepts timezone string identifiers like 'Asia/Seoul'.
     try:
-        schedule.every().day.at("04:50", tz=LOCAL_TZ_NAME).do(save_and_reset)
-        logger.info(f"Scheduled daily dump for 04:50 AM {LOCAL_TZ_NAME} timezone.")
-    except Exception as e:
-        logger.error(
-            f"Timezone schedule registration failed (check schedule library version): {e}"
-        )
+        # Run the fetch cycle immediately on start
+        the_sieve_job()
 
-    logger.info("Bot is active and polling continuously. (Press Ctrl+C to stop)")
-    try:
+        # 1. Schedule the repeating interval
+        schedule.every(CHECK_INTERVAL_MINUTES).minutes.do(the_sieve_job)
+
+        # 2. Schedule the Daily Save & Reset explicitly using the Local Timezone at 04:50
+        # The `schedule` library accepts timezone string identifiers like 'Asia/Seoul'.
+        try:
+            schedule.every().day.at("04:50", tz=LOCAL_TZ_NAME).do(save_and_reset)
+            logger.info(f"Scheduled daily dump for 04:50 AM {LOCAL_TZ_NAME} timezone.")
+        except Exception as e:
+            logger.error(
+                f"Timezone schedule registration failed (check schedule library version): {e}"
+            )
+
+        logger.info("Bot is active and polling continuously. (Press Ctrl+C to stop)")
         while True:
             schedule.run_pending()
             time.sleep(1)

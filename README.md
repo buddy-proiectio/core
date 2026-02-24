@@ -1,12 +1,12 @@
 # Buddy Core Pipeline
 
-Buddy Core is an automated, multi-agent Intelligence Pipeline designed to act as a personal multi-billionaire Chief Investment Officer (CIO). The system monitors global news via RSS, tracks market indicators, extracts deeply actionable facts using LLMs, and synthesizes them into a highly curated, professionally translated daily newsletter.
+Buddy Core is an automated, multi-agent Intelligence Pipeline designed to act as a personal multi-billionaire Chief Investment Officer (CIO). The system monitors global news via RSS, tracks market indicators, extracts deeply actionable facts using LLMs, and synthesizes them into a highly curated, professionally translated daily report.
 
 ## Project Architecture
 
 The pipeline consists of five key modules, each handling a specific stage of data processing:
 
-### 1. Sieve (`sieve/main.py`)
+### 1. Sieve (`sieve.py`)
 
 **Role:** Data Gathering & Rule-based Filtering Bot
 
@@ -14,7 +14,7 @@ The pipeline consists of five key modules, each handling a specific stage of dat
 - Applies rigorous keyword/regex filtering and uses semantic deduplication to avoid redundant news.
 - Dumps a master payload of the day's events into a timestamped JSON file (e.g., `daily_news_YYYYMMDD.json`) at a set time (e.g., 04:50 AM).
 
-### 2. Sorter (`sorter/main.py`)
+### 2. Sorter (`sorter.py`)
 
 **Role:** Article Categorization
 
@@ -22,7 +22,7 @@ The pipeline consists of five key modules, each handling a specific stage of dat
 - Categorizes articles into predefined structural mega-trends (e.g., AI, Crypto, Tech, US Macro) based on exact keyword matches.
 - Saves segmented JSON files (e.g., `AI_sorted_YYYYMMDD.json`) for specialized tracking or agents.
 
-### 3. Extractor (`extractor/main.py`)
+### 3. Extractor (`extractor.py`)
 
 **Role:** AI Fact Extraction Engine
 
@@ -30,21 +30,21 @@ The pipeline consists of five key modules, each handling a specific stage of dat
 - Employs an LLM (via LiteLLM) to extract only the hard facts, KPIs, and critical structural shifts.
 - Ensures no hallucinated data and strict formatting, saving the output to `extracted_facts_YYYYMMDD.txt`.
 
-### 4. CIO (`cio/main.py`)
+### 4. CIO (`cio.py`)
 
-**Role:** Insight Synthesis & Newsletter Generation
+**Role:** Insight Synthesis & Report Generation
 
 - Adopts the persona of a highly successful, self-made investor.
 - Weaves together the extracted facts, market indicators, and weekly schedule into a cohesive, insightful morning commentary ("Daily Point").
-- Formats everything into a structured report saved as `final_newsletter_YYYYMMDD.txt`.
+- Formats everything into a structured report saved as `final_report_YYYYMMDD.txt`.
 
-### 5. Translator (`translator/main.py`)
+### 5. Translator (`translator.py`)
 
 **Role:** Localization Engine
 
-- Translates the final English newsletter into professional Korean.
+- Translates the final English report into professional Korean.
 - Maintains strict formatting rules, specialized financial vocabulary, and specific Markdown line break (`\`) constraints.
-- Overwrites or creates the finalized Korean markdown newsletter ready for viewing or sending.
+- Overwrites or creates the finalized Korean markdown report ready for viewing or sending.
 
 ---
 

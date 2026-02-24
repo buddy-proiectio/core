@@ -14,7 +14,7 @@ import logging
 
 LOG_FILE = "logs/translator.log"
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
 setup_logger(LOG_FILE)
@@ -111,6 +111,12 @@ def process_line(line: str) -> str:
         ):
             return line_content + ("\n" if original_endswith_newline else "")
 
+    # 2.5) Earnings Schedule (Do not translate)
+    if stripped_line.startswith("★ [Earnings]"):
+        return line_content.replace("[Earnings]", "[실적]") + (
+            "\n" if original_endswith_newline else ""
+        )
+
     # 3) Dates: Report Header (e.g., ## 20260224 -> ## 2026년 2월 24일 Alpha Signal
     m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped_line)
     if m_report:
@@ -190,7 +196,10 @@ def process_line(line: str) -> str:
         return prefix + ("\n" if original_endswith_newline else "")
 
     # 5) Partial string replacements: [Macro] -> [매크로], [Earnings] -> [실적]
-    tags_mapping = {"[Macro]": "[매크로]", "[Earnings]": "[실적]"}
+    tags_mapping = {
+        "[Macro]": "[매크로]",
+        "[Earnings]": "[실적]",
+    }
     for en_tag, kr_tag in tags_mapping.items():
         target_text_lstrip = target_text.lstrip()
         if target_text_lstrip.startswith(en_tag):
@@ -245,15 +254,17 @@ def process_line(line: str) -> str:
     return final_line
 
 
-def main():
+def run_translator():
     workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(workspace_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
 
-    # We are looking for files matching final_newsletter_YYYYMMDD.txt
-    search_pattern = os.path.join(workspace_dir, "final_newsletter_*.txt")
+    # We are looking for files matching final_report_YYYYMMDD.txt
+    search_pattern = os.path.join(data_dir, "final_report_*.txt")
     files = glob.glob(search_pattern)
 
     if not files:
-        logger.error("No input files matching final_newsletter_YYYYMMDD.txt found.")
+        logger.error("No input files matching final_report_YYYYMMDD.txt found.")
         sys.exit(1)
 
     # Process the most recent file
@@ -261,10 +272,10 @@ def main():
     input_file = files[0]
 
     filename = os.path.basename(input_file)
-    date_part = filename.replace("final_newsletter_", "").replace(".txt", "")
+    date_part = filename.replace("final_report_", "").replace(".txt", "")
 
     output_filename = f"alpha_signal_{date_part}.md"
-    output_file = os.path.join(workspace_dir, output_filename)
+    output_file = os.path.join(data_dir, output_filename)
 
     logger.info(f"Starting translation process...")
     logger.info(f"Input: {input_file}")
@@ -285,7 +296,7 @@ def main():
             date_pattern = r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)\s*\("
 
             is_target_line = stripped_original.startswith(
-                ("_ ", "* ", "★ ", "[Macro]", "[Earnings]", "[매크로]", "[실적]")
+                ("_ ", "* ", "★ ", "[Macro]", "[Earnings]")
             ) or re.match(date_pattern, stripped_original)
 
             if is_target_line:
@@ -311,7 +322,3 @@ def main():
 
     logger.info(f"Translation complete. Successfully saved to {output_file}")
     return True
-
-
-if __name__ == "__main__":
-    main()

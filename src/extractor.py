@@ -27,7 +27,7 @@ LOG_FILE = "logs/extractor.log"
 
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
 setup_logger(LOG_FILE)
@@ -57,7 +57,7 @@ from sentence_transformers import SentenceTransformer
 from prompts import get_agent_config, AGENT_CONFIGS
 
 
-def main(data_dir: str = "."):
+def run_extractor(data_dir: str = None):
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
     Scans for category-specific JSON files, spins up a direct LLM execution pipeline
@@ -67,6 +67,13 @@ def main(data_dir: str = "."):
     # --- CONFIGURATION ---
     SEMANTIC_SIMILARITY_THRESHOLD = 0.85
     # ---------------------
+
+    # 0. Setup directories
+    if data_dir is None:
+        data_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+        )
+        os.makedirs(data_dir, exist_ok=True)
 
     # 1. Get today's date in YYYYMMDD format (Local Time)
     today_str = datetime.now().strftime("%Y%m%d")
@@ -284,7 +291,3 @@ def main(data_dir: str = "."):
             f"No active tasks were created for date {today_str}. Extraction aborted."
         )
         return None
-
-
-if __name__ == "__main__":
-    main()

@@ -31,18 +31,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Logs and Databases
+# Logs and outputs
 logs/
-*.log
-*.sqlite
-*.sqlite3
-
-# Project specific outputs/data
-sieve.log
-*.json
-extracted_facts_*.txt
-final_newsletter_*.txt
-alpha_signal_*.md
+data/
 
 # OS generated files
 .DS_Store
