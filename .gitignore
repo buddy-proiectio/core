@@ -32,6 +32,7 @@ share/python-wheels/
 MANIFEST
 
 # Logs and Databases
+logs/
 *.log
 *.sqlite
 *.sqlite3

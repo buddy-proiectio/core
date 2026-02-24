@@ -7,13 +7,13 @@ class ColoredFormatter(logging.Formatter):
         time_str = self.formatTime(record, "%H:%M:%S")
         level_name = f"{record.levelname:8}"
 
-        # 기본적으로 초록색 (INFO 및 그 이하)
+        # default Green (INFO, etc.)
         color_code = "\x1b[32m"
 
         if record.levelno == logging.WARNING:
-            color_code = "\x1b[33m"  # 노란색
+            color_code = "\x1b[33m"  # Yellow
         elif record.levelno >= logging.ERROR:
-            color_code = "\x1b[31m"  # 빨간색
+            color_code = "\x1b[31m"  # Red
 
         reset_code = "\x1b[0m"
 
@@ -22,7 +22,14 @@ class ColoredFormatter(logging.Formatter):
         )
 
 
+import os
+
+
 def setup_logger(log_file: str):
+    log_dir = os.path.dirname(log_file)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 

@@ -11,7 +11,7 @@ import os
 import glob
 import logging
 
-LOG_FILE = "sorter.log"
+LOG_FILE = "logs/sorter.log"
 
 import sys
 

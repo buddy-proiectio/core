@@ -12,7 +12,7 @@ import time
 import glob
 import logging
 
-LOG_FILE = "translator.log"
+LOG_FILE = "logs/translator.log"
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared_logger import setup_logger

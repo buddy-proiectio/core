@@ -23,7 +23,7 @@ logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 
-LOG_FILE = "extractor.log"
+LOG_FILE = "logs/extractor.log"
 
 import sys
 
