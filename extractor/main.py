@@ -39,6 +39,7 @@ from litellm import completion
 import litellm
 
 litellm.suppress_debug_info = True
+litellm.telemetry = False
 # Additionally suppress LiteLLM's internal logger
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
@@ -56,7 +57,7 @@ from sentence_transformers import SentenceTransformer
 from prompts import get_agent_config, AGENT_CONFIGS
 
 
-def run_extraction_pipeline(data_dir: str = "."):
+def main(data_dir: str = "."):
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
     Scans for category-specific JSON files, spins up a direct LLM execution pipeline
@@ -216,7 +217,7 @@ def run_extraction_pipeline(data_dir: str = "."):
                 )
                 try:
                     response = completion(
-                        model="ollama/gemma3:12b",
+                        model="ollama/llama3.1",
                         api_base="http://localhost:11434",
                         messages=[
                             {"role": "system", "content": sys_prompt},
@@ -283,15 +284,6 @@ def run_extraction_pipeline(data_dir: str = "."):
             f"No active tasks were created for date {today_str}. Extraction aborted."
         )
         return None
-
-
-def main():
-    try:
-        # Note: Ensure you run this from the 'extractor' directory or adjust data_dir
-        run_extraction_pipeline()
-    except KeyboardInterrupt:
-        logger.info("Shutdown signal received. Process terminating.")
-        sys.exit(0)
 
 
 if __name__ == "__main__":
