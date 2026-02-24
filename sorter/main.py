@@ -8,8 +8,18 @@ predefined groups such as Bitcoin, AI, Semiconductor, and Software.
 
 import json
 import os
-import sys
 import glob
+import logging
+
+LOG_FILE = "sorter.log"
+
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared_logger import setup_logger
+
+setup_logger(LOG_FILE)
+logger = logging.getLogger(__name__)
 
 
 def sort_articles_by_category(articles: list) -> dict:
@@ -81,56 +91,65 @@ def sort_articles_by_category(articles: list) -> dict:
     return categorized_articles
 
 
-if __name__ == "__main__":
-    # Test script loading the provided daily news file
-    # Adjust path to the root folder where the JSON file lives.
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if len(sys.argv) > 1:
-        target_json_path = sys.argv[1]
-    else:
-        files = glob.glob(os.path.join(base_dir, "daily_news_*.json"))
-        if not files:
-            print("Error: Could not find any daily_news_*.json")
+def main():
+    try:
+        # Test script loading the provided daily news file
+        # Adjust path to the root folder where the JSON file lives.
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if len(sys.argv) > 1:
+            target_json_path = sys.argv[1]
+        else:
+            files = glob.glob(os.path.join(base_dir, "daily_news_*.json"))
+            if not files:
+                logger.error("Error: Could not find any daily_news_*.json")
+                sys.exit(1)
+            target_json_path = max(files, key=os.path.getmtime)
+            logger.info(f"Auto-selected latest file: {target_json_path}")
+
+        if not os.path.exists(target_json_path):
+            logger.error(f"Error: Could not find {target_json_path}")
             sys.exit(1)
-        target_json_path = max(files, key=os.path.getmtime)
-        print(f"Auto-selected latest file: {target_json_path}")
 
-    if not os.path.exists(target_json_path):
-        print(f"Error: Could not find {target_json_path}")
-        sys.exit(1)
+        logger.info(f"Loading {target_json_path}")
 
-    print(f"Loading {target_json_path}")
+        with open(target_json_path, "r", encoding="utf-8") as f:
+            daily_news = json.load(f)
 
-    with open(target_json_path, "r", encoding="utf-8") as f:
-        daily_news = json.load(f)
+        articles = daily_news.get("articles", [])
+        logger.info(f"Found {len(articles)} articles to sort.")
 
-    articles = daily_news.get("articles", [])
-    print(f"Found {len(articles)} articles to sort.")
+        sorted_data = sort_articles_by_category(articles)
 
-    sorted_data = sort_articles_by_category(articles)
+        # Print the summary stats
+        logger.info("--- Sorting Summary ---")
+        for category, items in sorted_data.items():
+            logger.info(f"{category}: {len(items)} articles")
 
-    # Print the summary stats
-    print("\n--- Sorting Summary ---")
-    for category, items in sorted_data.items():
-        print(f"{category}: {len(items)} articles")
+        # Extract the YYYYMMDD date from the filename: "daily_news_20260223.json" -> "20260223"
+        filename = os.path.basename(target_json_path)
+        date_str = filename.replace("daily_news_", "").replace(".json", "")
 
-    # Extract the YYYYMMDD date from the filename: "daily_news_20260223.json" -> "20260223"
-    filename = os.path.basename(target_json_path)
-    date_str = filename.replace("daily_news_", "").replace(".json", "")
+        # Export the 8 distinct JSON files
+        logger.info("--- Exporting Files ---")
+        for category, items in sorted_data.items():
+            # Exception logic: Do not generate file if no articles exist
+            if not items:
+                continue
 
-    # Export the 8 distinct JSON files
-    print("\n--- Exporting Files ---")
-    for category, items in sorted_data.items():
-        # Exception logic: Do not generate file if no articles exist
-        if not items:
-            continue
+            # Clean the category name for safe file paths (spaces replaced with underscores)
+            safe_category = category.replace(" ", "_")
+            out_filename = f"{safe_category}_sorted_{date_str}.json"
+            out_path = os.path.join(base_dir, out_filename)
 
-        # Clean the category name for safe file paths (spaces replaced with underscores)
-        safe_category = category.replace(" ", "_")
-        out_filename = f"{safe_category}_sorted_{date_str}.json"
-        out_path = os.path.join(base_dir, out_filename)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(items, f, ensure_ascii=False, indent=2)
 
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved: {out_filename}")
 
-        print(f"Saved: {out_filename}")
+    except KeyboardInterrupt:
+        logger.info("Shutdown signal received. Process terminating.")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
