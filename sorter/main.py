@@ -20,7 +20,7 @@ def sort_articles_by_category(articles: list) -> dict:
     # 1. The Routing Map
     routing_map = {
         "General": ["FOMC", "CPI", "Fed", "Interest rate"],
-        "Bitcoin": ["Bitcoin", "BTC"],
+        "Bitcoin": ["Bitcoin", "BTC", "Gold", "Silver"],
         "Semiconductor": ["Nvidia", "NVDA", "Broadcom", "AVGO", "Micron", "MU", "AMD"],
         "AI": ["Anthropic", "OpenAI"],
         "Bio": ["Eli Lilly", "LLY", "Novo Nordisk", "NVO", "FDA"],

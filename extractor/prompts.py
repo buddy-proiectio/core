@@ -46,6 +46,8 @@ AGENT_CONFIGS = {
         5. Structural inflation trends (Core PCE trajectory) and Treasury yield curve shifts.
         6. M2 money supply, structural liquidity, and long-term Fed balance sheet (QT/QE) plans.
         7. Multi-year employment shifts and structural labor market changes.
+        8. US debt issuance & Treasury yield curve shifts.
+        9. AI-driven productivity metrics in GDP/employment.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="US Macroeconomics & Federal Reserve Policy",
@@ -65,6 +67,12 @@ AGENT_CONFIGS = {
         5. Corporate treasury adoption (e.g., FASB accounting changes, sovereign accumulation).
         6. Global hash rate distribution and structural supply dynamics (halving impacts over time).
         7. Layer 2 network TVL (Total Value Locked) growth and infrastructural expansion.
+        8. Nation-state/Sovereign strategic reserve adoption.
+        9. Real-World Asset (RWA) tokenization and TradFi integration on L2s.
+        10. Institutional derivatives/options liquidity.
+        11. Structural supply constraints.
+        12. Gold price, Gold ETF flows, Gold mining stocks, Gold supply and demand dynamics.
+        13. Silver price, Silver ETF flows, Silver mining stocks, Silver supply and demand dynamics.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="institutional money flows and on-chain facts",
@@ -83,7 +91,10 @@ AGENT_CONFIGS = {
         4. Multi-year CAPEX cycles (e.g., EUV/High-NA equipment orders).
         5. Next-gen node roadmaps (2nm/1.4nm development and mass production timelines).
         6. Structural advanced packaging (CoWoS/SOIC) capacity expansions.
-        7. Custom Silicon (ASIC) market share shifts and structural datacenter architecture changes.
+        7. Silicon Photonics and next-gen advanced packaging (Glass Substrates/CoWoS) bottlenecks.
+        8. Sovereign fab investments (CHIPS Act maturity).
+        9. Custom AI Silicon (ASIC) market shifts.
+        10. Chiplet architecture and heterogeneous integration.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="semiconductor industry data",
@@ -103,6 +114,9 @@ AGENT_CONFIGS = {
         5. Sovereign AI investments (nation-state level AI compute build-outs).
         6. Enterprise AI ROI (transition metrics from pilot programs to full production deployments).
         7. AGI development roadmaps and structural leaps in multi-modal capabilities.
+        8. Transition from AI training to Edge AI/Inference (AI PC & Smartphone supercycle).
+        9. Deployment of Autonomous B2B AI Agents.
+        10. Physical power infrastructure bottlenecks (Nuclear/SMR contracts).
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="AI industry data",
@@ -117,11 +131,13 @@ AGENT_CONFIGS = {
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
         1. Clinical Trial Data: Phase 1/2/3 statistical significance (e.g., weight-loss percentages), p-values.
         2. Regulatory Milestones: FDA PDUFA final decision dates, approvals, or Complete Response Letters (CRLs).
-        3. Manufacturing & Supply: CMO (Contract Manufacturing) capacity constraints, specifically for GLP-1/obesity drugs.
+        3. Manufacturing & Supply: CMO (Contract Manufacturing) capacity constraints, specifically for next-generation GLP-1/obesity drugs (muscle-preserving or oral obesity drugs).
         4. Patent cliff timelines for major blockbuster drugs.
         5. Drug pricing policy impacts (e.g., Inflation Reduction Act - IRA effects).
         6. Expanding clinical indications for existing blockbuster drugs (e.g., GLP-1 applications beyond weight loss).
         7. Multi-year pipeline depth and structural M&A activities.
+        8. Commercialization milestones of CRISPR/Gene-editing therapies.
+        9. AI-driven drug discovery (AlphaFold) drastically cutting R&D timelines.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="biotechnology industry data",
@@ -141,6 +157,9 @@ AGENT_CONFIGS = {
         5. Reusability economics and structural margin expansion for launch vehicles.
         6. Long-term defense budget allocations and structural government contracts.
         7. Consolidation of defense contractors and multi-year backlog growth.
+        8. Commercialization of Low Earth Orbit (Direct-to-Cell satellite networks).
+        9. Autonomous AI defense tech (drone swarms/hypersonics) DoD budgets.
+        10. Lunar economy (Artemis) contract awards.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="aerospace industry data",
@@ -159,6 +178,8 @@ AGENT_CONFIGS = {
         4. Multi-year Remaining Performance Obligations (RPO) growth.
         5. Platform lock-in metrics and structural ecosystem switching costs.
         6. Transition metrics to AI-agentic workflows (shifts from seat-based pricing to consumption/outcome-based pricing).
+        7. Shift from seat-based SaaS to consumption-based 'AI Agent-as-a-Service'.
+        8. Cybersecurity spending for AI models, and vertical-specific AI platform ecosystem lock-in metrics.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="software industry data",
@@ -177,7 +198,9 @@ AGENT_CONFIGS = {
         4. Supply chain restructuring (e.g., China+1 strategies, nearshoring, offshoring).
         5. Structural operating margin expansion via robotics, automation, and AI integration.
         6. Long-term capital return programs (massive share buybacks or structural dividend increases).
-        7. Robotaxis: Number of robotaxis deployed, revenue impact, and customer acquisition costs.
+        7. Humanoid robotics and autonomous driving (Robotaxi) scaling metrics. FSD (Full Self-Driving) progress.
+        8. US manufacturing reshoring/automation impacts on operating margins.
+        9. Mega-cap FCF driven structural share buybacks.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="mega-cap and consumer industry data",
