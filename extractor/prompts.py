@@ -15,20 +15,7 @@ def build_task_template(
         1. Read the provided JSON data.
         2. Scan the content for the hard data KPIs defined in your Goal.
         3. Extract the exact sentences or context blocks.
-        4. Output the result strictly in this exact Markdown format:
-        
-        [Insert Actual Article Title Here](Insert Exact URL Here)
-        Exact copied text block 1
-        Exact copied text block 2 (if any)
-        ...
-        
-        CRITICAL FORMATTING RULES:
-        - Write the `[Title](URL)` header ONLY ONCE per article. Do NOT repeat the header for every extracted sentence.
-        - Append all of the extracted sentences/blocks from that article below the header continuously.
-        - The title inside the square brackets `[]` MUST be the actual text title of the article. Do NOT put the URL in the brackets.
-        - The URL inside the parentheses `()` MUST be the exact URL provided.
-        - Do not alter or break this `[Title](URL)` markdown link format in any way.
-
+        4. Output ONLY the raw extracted text blocks natively. Do not add any conversational filler, prefixes, numbering, or labels.
         5. CRITICAL: {critical_condition}
         
         Here are the articles to process:
