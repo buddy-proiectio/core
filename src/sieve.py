@@ -547,7 +547,8 @@ def process_rss_feed(feed_name: str, feed_url: str) -> None:
 
             title = entry.get("title", "").strip()
             if feed_name.startswith("X, @"):
-                title = f"{title} ({feed_name})"
+                first_sentence = re.split(r"(?<=[.!?])\s+|\n", title)[0].strip()
+                title = f"{first_sentence} ({feed_name})"
 
             summary_html = entry.get("summary", "") or entry.get("description", "")
             summary = strip_html_tags(summary_html)
