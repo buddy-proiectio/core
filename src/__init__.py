@@ -7,10 +7,56 @@ from extractor import run_extractor
 from cio import run_cio
 from translator import run_translator
 import os
+import subprocess
+import datetime
 import glob
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def pull_data_from_cloud():
+    """
+    Pull sieve's data from oracle cloud storage
+    """
+    today = datetime.now().strftime("%Y%m%d")
+
+    """
+    Change the following variables if you are not using the same environment as mine
+    """
+    ORACLE_IP_ADDRESS = "159.13.60.28"
+    ORACLE_SSH_KEY = "/Users/taehoonkwon__/.ssh/oracle-cloud-ssh.key"
+    remote_file = f"/home/ubuntu/sieve/data/daily_news_{today}.json"
+
+    local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
+    local_file = f"{local_dir}/daily_news_{today}.json"
+
+    os.makedirs(local_dir, exist_ok=True)
+
+    scp_command = f"scp -i {ORACLE_SSH_KEY} -o StrictHostKeyChecking=no ubuntu@{ORACLE_IP_ADDRESS}:{remote_file} {local_file}"
+
+    try:
+        logger.info(f"Pulling data from oracle cloud storage... ({remote_file})")
+
+        subprocess.run(
+            scp_command, shell=True, check=True, capture_output=True, text=True
+        )
+
+        if os.path.exists(local_file):
+            logger.info(
+                f"Successfully pulled data from oracle cloud storage: {local_file}"
+            )
+        else:
+            logger.error(
+                f"Not found {local_file} after pulling from oracle cloud storage"
+            )
+            raise FileNotFoundError(
+                f"Not found {local_file} after pulling from oracle cloud storage"
+            )
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to pull data from oracle cloud storage: {e}")
+        raise
 
 
 def run_all():
@@ -24,6 +70,10 @@ def run_all():
     logger.info("Starting Buddy Core Pipeline...")
 
     try:
+        logger.info(f"[0/4] Pulling Sieve data...")
+        pull_data_from_cloud()
+        logger.info("-----------------------------------------------------")
+
         logger.info("[1/4] Running Sorter...")
         run_sorter()
         logger.info("-----------------------------------------------------")
