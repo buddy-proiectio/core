@@ -8,7 +8,7 @@ from cio import run_cio
 from translator import run_translator
 import os
 import subprocess
-import datetime
+from datetime import datetime
 import glob
 import logging
 
@@ -26,7 +26,7 @@ def pull_data_from_cloud():
     """
     ORACLE_IP_ADDRESS = "159.13.60.28"
     ORACLE_SSH_KEY = "/Users/taehoonkwon__/.ssh/oracle-cloud-ssh.key"
-    remote_file = f"/home/ubuntu/sieve/data/daily_news_{today}.json"
+    remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
 
     local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
     local_file = f"{local_dir}/daily_news_{today}.json"
