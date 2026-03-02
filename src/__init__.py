@@ -11,8 +11,28 @@ import subprocess
 from datetime import datetime
 import glob
 import logging
+import pytz
+import holidays
 
 logger = logging.getLogger(__name__)
+
+
+def is_us_trading_day() -> bool:
+    """
+    Checks if the current date corresponds to a US trading day.
+    US trading days are Monday-Friday excluding NYSE holidays.
+    """
+    us_tz = pytz.timezone("America/New_York")
+    us_now = datetime.now(us_tz).date()
+
+    if us_now.weekday() >= 5:
+        return False
+
+    nyse_holidays = holidays.financial_holidays("US", years=us_now.year)
+    if us_now in nyse_holidays:
+        return False
+
+    return True
 
 
 def pull_data_from_cloud():
@@ -68,6 +88,12 @@ def run_all():
     EXCEPT for the final alpha_signal_*.md file.
     """
     logger.info("Starting Buddy Core Pipeline...")
+
+    if not is_us_trading_day():
+        logger.info(
+            "US Market is closed (Weekend/Holiday). Skipping pipeline execution today."
+        )
+        return
 
     try:
         logger.info(f"[0/4] Pulling Sieve data...")
