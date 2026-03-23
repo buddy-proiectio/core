@@ -40,9 +40,13 @@ AGENT_CONFIGS = {
             industry_focus="US Macroeconomics & Federal Reserve Policy",
             ignore_rule="speculative price predictions, technical analysis (support/resistance), or emotional market sentiment",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "cpi", "pce", "inflation", "fed", "federal reserve", "interest rate", "basis point", "bps", 
+            "dot plot", "qt", "nfp", "payroll", "unemployment", "hawkish", "dovish", "yield curve", 
+            "m2", "treasury", "macro", "gdp", "powell", "yellen", "recession", "soft landing", "cbdc", 
+            "debt limit", "fiscal", "tariff", "trade war"
+        ],
     },
     "Bitcoin": {
         "role": "Exact Text Extraction Algorithm: Bitcoin & Institutional Liquidity",
@@ -65,9 +69,13 @@ AGENT_CONFIGS = {
             industry_focus="institutional money flows and on-chain facts",
             ignore_rule="speculative price predictions, technical analysis (support/resistance), or emotional market sentiment",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article only discusses price predictions or lacks the specific KPIs, you MUST output exactly the word: NO_EXTRACTION"
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "etf", "bitcoin", "btc", "ethereum", "eth", "inflow", "outflow", "whale", "treasury", "fasb", 
+            "halving", "hash rate", "tvl", "l2", "rwa", "tokenization", "gold", "silver", "saylor", 
+            "michael saylor", "fink", "larry fink", "gensler", "sec", "stablecoin", "defi", "staking", 
+            "solana", "sol", "sovereign fund", "strategic reserve"
+        ],
     },
     "Semiconductor": {
         "role": "Exact Text Extraction Algorithm: Semiconductor & Supply Chain",
@@ -82,14 +90,19 @@ AGENT_CONFIGS = {
         8. Sovereign fab investments (CHIPS Act maturity).
         9. Custom AI Silicon (ASIC) market shifts.
         10. Chiplet architecture and heterogeneous integration.
+        11. Mega-scale 'Terafab' clusters and infrastructure build-outs (e.g., Elon Musk's xAI Colossus or regional autonomous tech clusters).
+        12. Statements from key figures (Elon Musk, Jensen Huang, Lisa Su, Pat Gelsinger, Morris Chang) regarding Terafabs, compute scaling, or future foundry investments.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="semiconductor industry data",
             ignore_rule="speculative price predictions or technical analysis",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "revenue", "eps", "margin", "tsmc", "nvidia", "amd", "cowos", "foundry", "capex", "euv", "nm", 
+            "soic", "photonics", "chips act", "asic", "chiplet", "terafab", "musk", "elon musk", 
+            "jensen huang", "lisa su", "gelsinger", "intel", "samsung", "hbm", "high-na", "glass substrate"
+        ],
     },
     "AI": {
         "role": "Exact Text Extraction Algorithm: AI & Generative Models",
@@ -109,9 +122,13 @@ AGENT_CONFIGS = {
             industry_focus="AI industry data",
             ignore_rule="ethical debates, generic future outlooks, or technical analysis",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "compute", "vram", "gpu", "api", "b2b", "funding", "valuation", "nuclear", "smr", "roi", "agi", 
+            "multi-modal", "edge ai", "agent", "autonomous", "sam altman", "openai", "anthropic", 
+            "demis hassabis", "ilya sutskever", "xai", "grok", "llama", "claude", "gemini", "copilot", 
+            "chatgpt", "deepseek", "qwen", "moe"
+        ],
     },
     "Bio": {
         "role": "Exact Text Extraction Algorithm: Biotechnology & Pharmaceuticals",
@@ -130,9 +147,12 @@ AGENT_CONFIGS = {
             industry_focus="biotechnology industry data",
             ignore_rule="generic health advice or stock price predictions",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "clinical", "phase 1", "phase 2", "phase 3", "p-value", "fda", "pdufa", "crl", "cmo", "glp-1", 
+            "obesity", "patent", "ira", "m&a", "crispr", "alphafold", "eli lilly", "novo nordisk", "wegovy", 
+            "zepbound", "mrna", "car-t", "gene editing", "alzheimer", "oncology"
+        ],
     },
     "Aerospace": {
         "role": "Exact Text Extraction Algorithm: Aerospace & Space Economy",
@@ -152,9 +172,12 @@ AGENT_CONFIGS = {
             industry_focus="aerospace industry data",
             ignore_rule="generic space exploration enthusiasm or stock price predictions",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "launch", "payload", "starlink", "nasa", "dod", "tam", "defense", "backlog", "orbit", "drone", 
+            "hypersonic", "artemis", "lunar", "spacex", "blue origin", "ula", "lockheed", "boeing", 
+            "northrop", "anduril", "palantir", "karp", "shield ai"
+        ],
     },
     "Software": {
         "role": "Exact Text Extraction Algorithm: Enterprise Software & Cloud Services",
@@ -172,9 +195,12 @@ AGENT_CONFIGS = {
             industry_focus="software industry data",
             ignore_rule="generic feature updates or UI changes",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "aws", "azure", "google cloud", "gcp", "nrr", "ndr", "copilot", "arpu", "rpo", "saas", 
+            "cybersecurity", "nadella", "jassy", "pichai", "benioff", "salesforce", "servicenow", 
+            "crowdstrike", "palo alto", "databricks", "snowflake"
+        ],
     },
     "Others": {
         "role": "Exact Text Extraction Algorithm: Mega-Cap Tech & Consumer",
@@ -193,9 +219,12 @@ AGENT_CONFIGS = {
             industry_focus="mega-cap and consumer industry data",
             ignore_rule="speculative price predictions, emotional sentiment, or CEO personal gossip",
         ),
-        "task_description_template": build_task_template(
-            critical_condition="If an article does NOT contain any of the specific KPIs, you MUST output exactly the word: NO_EXTRACTION for that article.",
-        ),
+        "task_description_template": build_task_template(),
+        "keywords": [
+            "delivery", "shipment", "fcf", "free cash flow", "margin", "logistics", "supply chain", 
+            "reshoring", "robotics", "automation", "buyback", "dividend", "robotaxi", "fsd", "tim cook", 
+            "zuckerberg", "bezos", "tesla", "apple", "meta", "amazon", "alphabet", "optimus", "figure ai"
+        ],
     },
 }
 

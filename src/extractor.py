@@ -35,13 +35,7 @@ logger = logging.getLogger(__name__)
 
 from datetime import datetime
 import torch
-from litellm import completion
-import litellm
-
-litellm.suppress_debug_info = True
-litellm.telemetry = False
-# Additionally suppress LiteLLM's internal logger
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+import requests
 
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
 
@@ -167,6 +161,13 @@ def run_extractor(data_dir: str = None):
 
             # Fetch the dynamic configuration for this role
             config = get_agent_config(category)
+            keywords = config.get("keywords", [])
+            # Compile regex patterns for exact word boundary matches
+            keyword_patterns = (
+                [re.compile(r"\b" + re.escape(kw.lower()) + r"\b") for kw in keywords]
+                if keywords
+                else []
+            )
 
             # Build the strict System Prompt
             system_prompt = (
@@ -180,6 +181,15 @@ def run_extractor(data_dir: str = None):
             for idx, article in enumerate(unique_articles):
                 title = article.get("title", f"Article {idx+1}")
                 content = article.get("content", "")
+
+                # 1st Pass: Python Keyword Pre-filtering
+                if keyword_patterns:
+                    combined_text = (title + " " + content).lower()
+                    if not any(
+                        pattern.search(combined_text) for pattern in keyword_patterns
+                    ):
+                        # Skip this article completely if no keywords match
+                        continue
 
                 input_text = (
                     f"\n--- BEGIN ARTICLE ---\n"
@@ -203,7 +213,7 @@ def run_extractor(data_dir: str = None):
         else:
             logger.info(f"File not found, skipping category: {category}")
 
-    # Process all tasks directly via LLM
+    # Process all tasks directly via Local LLM
     if active_tasks:
         logger.info(f"Starting Direct LLM Extraction with {len(active_tasks)} tasks...")
         logger.info(
@@ -216,51 +226,65 @@ def run_extractor(data_dir: str = None):
         category_outputs = {category: [] for category in categories}
 
         try:
-            for idx, (category, sys_prompt, user_prompt, article) in enumerate(
-                active_tasks, 1
-            ):
-                logger.info(
-                    f"Processing Task {idx:02d}/{len(active_tasks)} [{category}] ..."
-                )
-                try:
-                    response = completion(
-                        model="ollama/llama3.1",
-                        api_base="http://localhost:11434",
-                        messages=[
+            url = "http://127.0.0.1:11434/api/chat"
+            total_tasks = len(active_tasks)
+
+            # Setup TCP connection pool session
+            with requests.Session() as session:
+                for idx, task_data in enumerate(active_tasks, 1):
+                    category, sys_prompt, user_prompt, article = task_data
+
+                    payload = {
+                        "model": "llama3.1",
+                        "messages": [
                             {"role": "system", "content": sys_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        temperature=0.0,
-                        top_p=0.1,
-                        max_tokens=1500,
-                    )
+                        "stream": False,
+                        "options": {
+                            "num_ctx": 4096,
+                            "num_predict": 1500,
+                            "temperature": 0.0,
+                            "top_p": 0.1,
+                        },
+                    }
 
-                    output = response.choices[0].message.content.strip()
+                    try:
+                        logger.info(
+                            f"Processing Task {idx:02d}/{total_tasks} [{category}] ..."
+                        )
+                        # Synchronous post with TCP connection pooling
+                        resp = session.post(url, json=payload, timeout=600)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        output = data.get("message", {}).get("content", "").strip()
 
-                    # Rigid post-processing block
-                    if output and "NO_EXTRACTION" not in output.upper():
-                        logger.info("Extracted!")
-                        # Replace all newlines with a single space to form a continuous block
-                        output = re.sub(r"\s+", " ", output).strip()
+                        # Rigid post-processing block
+                        if output and "NO_EXTRACTION" not in output.upper():
+                            logger.info(f"Task {idx:02d} [{category}] Extracted!")
+                            # Replace all newlines with a single space to form a continuous block
+                            output = re.sub(r"\s+", " ", output).strip()
 
-                        # Format the result with python
-                        raw_title = article.get("title", f"Article {idx+1}")
-                        # Strip HTML tags
-                        clean_title = re.sub(r"<.*?>", "", raw_title).strip()
-                        url = article.get("url", "#")
+                            # Format the result with python
+                            raw_title = article.get("title", f"Article {idx}")
+                            # Strip HTML tags
+                            clean_title = re.sub(r"<.*?>", "", raw_title).strip()
+                            article_url = article.get("url", "#")
 
-                        # Dedup check: If output text is just the title, printing it repeats the title.
-                        if output == clean_title:
-                            final_text = f"[{clean_title}]({url})"
+                            # Dedup check: If output text is just the title, printing it repeats the title.
+                            if output == clean_title:
+                                final_text = f"[{clean_title}]({article_url})"
+                            else:
+                                final_text = f"[{clean_title}]({article_url})\n{output}"
+
+                            category_outputs[category].append(final_text)
                         else:
-                            final_text = f"[{clean_title}]({url})\n{output}"
+                            logger.info(
+                                f"Task {idx:02d} [{category}] Skipped (No KPIs)"
+                            )
 
-                        category_outputs[category].append(final_text)
-                    else:
-                        logger.info("Skipped (No KPIs)")
-
-                except Exception as e:
-                    logger.error(f"Error process: {e}")
+                    except Exception as e:
+                        logger.error(f"Error process Task {idx:02d} [{category}]: {e}")
 
         except KeyboardInterrupt:
             logger.info("Shutdown signal received. Process terminating.")
