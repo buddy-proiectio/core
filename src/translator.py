@@ -20,47 +20,108 @@ from shared_logger import setup_logger
 setup_logger(LOG_FILE)
 logger = logging.getLogger(__name__)
 
-from litellm import completion
-import litellm
+# Suppress noisy INFO logs from external libraries
+logging.getLogger("deepl").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-litellm.suppress_debug_info = True
-litellm.telemetry = False
-litellm.turn_off_message_logging = True
+from deep_translator import GoogleTranslator
+import deepl
 
-# Additionally suppress LiteLLM's internal logger
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+DEEPL_API_KEY = "41415273-1167-e96a-d51f-7c6d52c06ac2:fx"
+deepl_translator = deepl.Translator(DEEPL_API_KEY)
 
+
+def make_polite(text: str) -> str:
+    """
+    Post-process Korean translation to enforce polite/formal endings (~입니다, ~합니다).
+    DeepL API currently does not support the 'formality' parameter for Korean.
+    """
+    if not text:
+        return text
+        
+    # Past Tense
+    text = re.sub(r'([었았였했])다\.', r'\1습니다.', text)
+    text = re.sub(r'([었았였했])다([\s\n])', r'\1습니다\2', text)
+    text = re.sub(r'([었았였했])다$', r'\1습니다', text)
+    
+    # Present Tense & Adjectives
+    replacements = [
+        (r'한다\.', '합니다.'),
+        (r'하다\.', '합니다.'),
+        (r'된다\.', '됩니다.'),
+        (r'이다\.', '입니다.'),
+        (r'있다\.', '있습니다.'),
+        (r'없다\.', '없습니다.'),
+        (r'않다\.', '않습니다.'),
+        (r'크다\.', '큽니다.'),
+        (r'많다\.', '많습니다.'),
+        (r'적다\.', '적습니다.'),
+        (r'높다\.', '높습니다.'),
+        (r'낮다\.', '낮습니다.'),
+        (r'같다\.', '같습니다.'),
+        (r'겠다\.', '겠습니다.'),
+        (r'진다\.', '집니다.'),
+        (r'시킨다\.', '시킵니다.'),
+        (r'나온다\.', '나옵니다.'),
+        (r'보인다\.', '보입니다.'),
+        (r'준다\.', '줍니다.'),
+        (r'받는다\.', '받습니다.'),
+        (r'간다\.', '갑니다.'),
+        (r'온다\.', '옵니다.'),
+        (r'증가했다\.', '증가했습니다.'),
+        (r'감소했다\.', '감소했습니다.'),
+        (r'상승했다\.', '상승했습니다.'),
+        (r'하락했다\.', '하락했습니다.')
+    ]
+    
+    for old, new in replacements:
+        text = re.sub(old, new, text)
+        # Catch items without periods
+        old_no_dot = old.replace(r'\.', r'$')
+        new_no_dot = new.replace('.', '')
+        text = re.sub(old_no_dot, new_no_dot, text, flags=re.MULTILINE)
+        
+    return text
 
 def translate_text(text: str) -> str:
     if not text.strip():
         return text
 
-    system_prompt = "Translate the following English (en) financial/macroeconomic text into natural, highly professional Korean (ko-KR). Do not add any extra commentary or conversational filler. Output ONLY the translated text."
-
     max_retries = 3
-    delay = 2  # seconds
+    delay = 2  # retry delay in seconds
 
+    # First attempt with DeepL
     for attempt in range(max_retries):
         try:
-            response = completion(
-                model="ollama/translategemma",
-                api_base="http://localhost:11434",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text},
-                ],
+            result = deepl_translator.translate_text(text, target_lang="KO")
+            return make_polite(result.text)
+        except deepl.QuotaExceededException:
+            logger.warning(
+                "DeepL quota exceeded. Falling back to Google Translator immediately."
             )
-            translated = response.choices[0].message.content.strip()
-            return translated
+            break
         except Exception as e:
             logger.warning(
-                f"Translation failed (attempt {attempt + 1}/{max_retries}): {e}"
+                f"DeepL translation failed (attempt {attempt + 1}/{max_retries}): {e}"
             )
             if attempt < max_retries - 1:
                 time.sleep(delay)
             else:
-                logger.error("Max retries reached. Raising exception.")
-                raise e
+                logger.error(
+                    "Max retries reached for DeepL. Falling back to Google Translator."
+                )
+                break
+
+    # Fallback to Google Translator if DeepL failed or quota exceeded
+    try:
+        # To avoid IP block from Google Translator
+        time.sleep(0.1)
+        google_translator = GoogleTranslator(source="en", target="ko")
+        translated = google_translator.translate(text)
+        return make_polite(translated)
+    except Exception as e:
+        logger.error(f"Fallback Google translation failed: {e}")
+        raise e
 
 
 def process_line(line: str) -> str:

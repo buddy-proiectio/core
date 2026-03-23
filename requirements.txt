@@ -10,12 +10,12 @@ yfinance>=0.2.37
 lxml_html_clean>=0.4.3
 
 # Utilities
-python-dotenv>=1.1.1
 tzlocal>=5.3.1
 holidays>=0.91
 
 # AI Agents (Extractor - Local LLM)
 sentence-transformers>=3.0.0
-litellm[proxy]>=1.75.3
-fastapi>=0.115.14
-uvicorn>=0.29.0
+
+# Translation
+deep-translator>=1.11.4
+deepl>=1.14.0
