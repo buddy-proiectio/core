@@ -30,15 +30,7 @@ from shared_logger import setup_logger
 setup_logger(LOG_FILE)
 logger = logging.getLogger(__name__)
 
-from litellm import completion
-import litellm
-
-litellm.suppress_debug_info = True
-litellm.telemetry = False
-litellm.turn_off_message_logging = True
-
-# Additionally suppress LiteLLM's internal logger
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+import requests
 
 CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
 You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
@@ -132,7 +124,7 @@ def generate_cio_commentary(
     market_text: str, schedule_text: str, facts_text: str
 ) -> str:
     """
-    Generate narrative commentary using LiteLLM.
+    Generate narrative commentary using local Ollama.
     """
     user_prompt = CIO_USER_PROMPT_TEMPLATE.format(
         market_indicators_text=market_text,
@@ -140,19 +132,30 @@ def generate_cio_commentary(
         extracted_facts_text=facts_text,
     )
 
-    response = completion(
-        model="ollama/llama3.1",
-        api_base="http://localhost:11434",
-        messages=[
+    url = "http://localhost:11434/api/chat"
+    payload = {
+        "model": "llama3.1",
+        "messages": [
             {"role": "system", "content": CIO_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.4,
-        top_p=0.9,
-        max_tokens=3000,
-    )
+        "stream": False,
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "num_predict": 3000,
+            "num_ctx": 32768,
+        },
+    }
 
-    return response.choices[0].message.content.strip()
+    try:
+        response = requests.post(url, json=payload, timeout=120)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("message", {}).get("content", "").strip()
+    except Exception as e:
+        logger.error(f"Failed to communicate with local Ollama: {e}")
+        raise e
 
 
 def run_cio():
@@ -213,7 +216,7 @@ def run_cio():
         schedule_text = format_weekly_schedule(data)
 
         # 4. Generate AI Commentary
-        logging.info("Generating AI commentary from LiteLLM...")
+        logging.info("Generating AI commentary from local Ollama...")
         try:
             commentary = generate_cio_commentary(market_text, schedule_text, facts_text)
             logging.info("Successfully generated AI commentary.")
