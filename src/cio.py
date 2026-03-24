@@ -144,7 +144,7 @@ def generate_cio_commentary(
             "temperature": 0.4,
             "top_p": 0.9,
             "num_predict": 3000,
-            "num_ctx": 32768,
+            "num_ctx": 16384,
         },
     }
 
