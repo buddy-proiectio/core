@@ -38,50 +38,123 @@ def make_polite(text: str) -> str:
     """
     if not text:
         return text
-        
-    # Past Tense
-    text = re.sub(r'([었았였했])다\.', r'\1습니다.', text)
-    text = re.sub(r'([었았였했])다([\s\n])', r'\1습니다\2', text)
-    text = re.sub(r'([었았였했])다$', r'\1습니다', text)
-    
-    # Present Tense & Adjectives
-    replacements = [
-        (r'한다\.', '합니다.'),
-        (r'하다\.', '합니다.'),
-        (r'된다\.', '됩니다.'),
-        (r'이다\.', '입니다.'),
-        (r'있다\.', '있습니다.'),
-        (r'없다\.', '없습니다.'),
-        (r'않다\.', '않습니다.'),
-        (r'크다\.', '큽니다.'),
-        (r'많다\.', '많습니다.'),
-        (r'적다\.', '적습니다.'),
-        (r'높다\.', '높습니다.'),
-        (r'낮다\.', '낮습니다.'),
-        (r'같다\.', '같습니다.'),
-        (r'겠다\.', '겠습니다.'),
-        (r'진다\.', '집니다.'),
-        (r'시킨다\.', '시킵니다.'),
-        (r'나온다\.', '나옵니다.'),
-        (r'보인다\.', '보입니다.'),
-        (r'준다\.', '줍니다.'),
-        (r'받는다\.', '받습니다.'),
-        (r'간다\.', '갑니다.'),
-        (r'온다\.', '옵니다.'),
-        (r'증가했다\.', '증가했습니다.'),
-        (r'감소했다\.', '감소했습니다.'),
-        (r'상승했다\.', '상승했습니다.'),
-        (r'하락했다\.', '하락했습니다.')
+
+    # Negative lookahead: only replace if NOT followed by another Korean character.
+    # This safely prevents modifying connectors like ~한다고, ~한다면, ~했다며, etc.
+    suffix_pattern = r"(?![가-힣ㄱ-ㅎㅏ-ㅣ])"
+
+    # 1. Noun exceptions and explicit special cases
+    explicit_replacements = [
+        (r"수치다", "수치입니다"),
+        (r"결과다", "결과입니다"),
+        (r"목표다", "목표입니다"),
+        (r"규모다", "규모입니다"),
+        (r"추세다", "추세입니다"),
+        (r"상태다", "상태입니다"),
+        (r"이유다", "이유입니다"),
+        (r"예상치다", "예상치입니다"),
+        (r"전망치다", "전망치입니다"),
+        (r"최고치다", "최고치입니다"),
+        (r"최저치다", "최저치입니다"),
+        (r"기록이다", "기록입니다"),
+        (r"상황이다", "상황입니다"),
+        (r"수준이다", "수준입니다"),
+        (r"예정이다", "예정입니다"),
+        (r"것이다", "것입니다"),
+        (r"전망이다", "전망입니다"),
+        (r"예상이다", "예상입니다"),
+        (r"예측이다", "예측입니다"),
+        (r"중이다", "중입니다"),
+        (r"때문이다", "때문입니다"),
+        (r"이다", "입니다"),
+        (r"아니다", "아닙니다"),
     ]
-    
+    for old, new in explicit_replacements:
+        text = re.sub(old + suffix_pattern, new, text)
+
+    # 2. Convert ~는다 to ~습니다 (for consonant-ending present tense verbs like 받는다)
+    text = re.sub(r"([가-힣])는다" + suffix_pattern, r"\1습니다", text)
+
+    # 3. Present tense, Adjectives, and common verbs
+    replacements = [
+        (r"한다", "합니다"),
+        (r"하다", "합니다"),
+        (r"된다", "됩니다"),
+        (r"되다", "됩니다"),
+        (r"있다", "있습니다"),
+        (r"없다", "없습니다"),
+        (r"않다", "않습니다"),
+        (r"크다", "큽니다"),
+        (r"많다", "많습니다"),
+        (r"적다", "적습니다"),
+        (r"높다", "높습니다"),
+        (r"낮다", "낮습니다"),
+        (r"같다", "같습니다"),
+        (r"다르다", "다릅니다"),
+        (r"작다", "작습니다"),
+        (r"가깝다", "가깝습니다"),
+        (r"멀다", "멉니다"),
+        (r"빠르다", "빠릅니다"),
+        (r"느리다", "느립니다"),
+        (r"어렵다", "어렵습니다"),
+        (r"쉽다", "쉽습니다"),
+        (r"어려워진다", "어려워집니다"),
+        (r"쉬워진다", "쉬워집니다"),
+        (r"좋다", "좋습니다"),
+        (r"나쁘다", "나쁩니다"),
+        (r"강하다", "강합니다"),
+        (r"약하다", "약합니다"),
+        (r"새롭다", "새롭습니다"),
+        (r"필요하다", "필요합니다"),
+        (r"중요하다", "중요합니다"),
+        (r"가능하다", "가능합니다"),
+        (r"불가능하다", "불가능합니다"),
+        (r"심하다", "심합니다"),
+        (r"비슷하다", "비슷합니다"),
+        (r"충분하다", "충분합니다"),
+        (r"다양하다", "다양합니다"),
+        (r"유사하다", "유사합니다"),
+        (r"겠다", "겠습니다"),
+        (r"진다", "집니다"),
+        (r"시킨다", "시킵니다"),
+        (r"나온다", "나옵니다"),
+        (r"보인다", "보입니다"),
+        (r"준다", "줍니다"),
+        (r"나타난다", "나타납니다"),
+        (r"간다", "갑니다"),
+        (r"온다", "옵니다"),
+        (r"늘어난다", "늘어납니다"),
+        (r"가져온다", "가져옵니다"),
+        (r"줄어든다", "줄어듭니다"),
+        (r"떨어진다", "떨어집니다"),
+        (r"오른다", "오릅니다"),
+        (r"이어진다", "이어집니다"),
+        (r"커진다", "커집니다"),
+        (r"작아진다", "작아집니다"),
+        (r"강조한다", "강조합니다"),
+        (r"성장한다", "성장합니다"),
+        (r"하락한다", "하락합니다"),
+        (r"증가한다", "증가합니다"),
+        (r"감소한다", "감소합니다"),
+        (r"상승한다", "상승합니다"),
+    ]
     for old, new in replacements:
-        text = re.sub(old, new, text)
-        # Catch items without periods
-        old_no_dot = old.replace(r'\.', r'$')
-        new_no_dot = new.replace('.', '')
-        text = re.sub(old_no_dot, new_no_dot, text, flags=re.MULTILINE)
-        
+        text = re.sub(old + suffix_pattern, new, text)
+
+    # 4. Programmatic replacer for Past Tense (any Syllable with ㅆ 받침 + 다)
+    # This safely handles 했, 었, 았, 였, 났, 겼, 혔, 샀, 컸, 줬, 갔, 왔, 등등
+    def ssang_sios_replacer(match):
+        char = match.group(1)
+        if "가" <= char <= "힣":
+            char_code = ord(char) - 0xAC00
+            if char_code % 28 == 20:  # 20 is the index for ㅆ 받침
+                return char + "습니다"
+        return match.group(0)
+
+    text = re.sub(r"([가-힣])다" + suffix_pattern, ssang_sios_replacer, text)
+
     return text
+
 
 def translate_text(text: str) -> str:
     if not text.strip():
