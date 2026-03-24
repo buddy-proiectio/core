@@ -331,7 +331,11 @@ def process_line(line: str) -> str:
 
     # 5) Partial string replacements: [Macro] -> [매크로], [Earnings] -> [실적]
     tags_mapping = {
-        "[Macro]": "[매크로]",
+        "[US Macro]": "[미국 매크로]",
+        "[JP Macro]": "[일본 매크로]",
+        "[AU Macro]": "[호주 매크로]",
+        "[CN Macro]": "[중국 매크로]",
+        "[EUR Macro]": "[유럽 매크로]",
         "[Earnings]": "[실적]",
     }
     for en_tag, kr_tag in tags_mapping.items():
