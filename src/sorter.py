@@ -25,10 +25,14 @@ logger = logging.getLogger(__name__)
 def sort_articles_by_category(articles: list) -> dict:
     """
     Sorts a list of article dictionaries into 8 specific categories based on
-    the 'matched_keywords' field. Uses case-insensitive, first-match routing.
+    the expanded keyword map from prompts.py, falling back to legacy keywords.
+    Performs deep text search on title & content for more precise classification.
     """
-    # 1. The Routing Map
-    routing_map = {
+    from prompts import AGENT_CONFIGS
+    import re
+
+    # 1. The Legacy Routing Map (Fallbacks for tickers)
+    legacy_routing_map = {
         "General": ["FOMC", "CPI", "Fed", "Interest rate"],
         "Bitcoin": ["Bitcoin", "BTC", "Gold", "Silver"],
         "Semiconductor": ["Nvidia", "NVDA", "Broadcom", "AVGO", "Micron", "MU", "AMD"],
@@ -59,31 +63,46 @@ def sort_articles_by_category(articles: list) -> dict:
         ],
     }
 
-    # Pre-process the routing map into a flat, lowercase dictionary for O(1) lookups
-    keyword_to_category = {}
+    # Merge prompts.py keywords and legacy keywords
+    routing_map = {
+        category: config.get("keywords", []).copy()
+        for category, config in AGENT_CONFIGS.items()
+    }
+    for category, keywords in legacy_routing_map.items():
+        if category not in routing_map:
+            routing_map[category] = []
+        for kw in keywords:
+            if kw.lower() not in [k.lower() for k in routing_map[category]]:
+                routing_map[category].append(kw)
+
+    # Pre-process the routing map into compiled regex patterns
+    category_patterns = {category: [] for category in routing_map.keys()}
     for category, keywords in routing_map.items():
         for kw in keywords:
-            keyword_to_category[kw.lower()] = category
+            # Word boundary regex for exact term match (case insensitive)
+            category_patterns[category].append(
+                re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
+            )
 
-    # Initialize the output structure with all 8 category keys mapped to empty lists
+    # Initialize the output structure
     categorized_articles = {category: [] for category in routing_map.keys()}
 
     # 2. Routing Logic
     for article in articles:
-        matched_keywords = article.get("matched_keywords", [])
         assigned = False
+        text_to_search = f"{article.get('title', '')} | {article.get('content', '')}"
 
-        # Iterate through the article's matched keywords
-        for kw in matched_keywords:
-            category = keyword_to_category.get(kw.lower())
-
-            if category:
-                # Collision Rule: First match wins
-                categorized_articles[category].append(article)
-                assigned = True
+        # Evaluate against patterns (First match wins based on AGENT_CONFIGS priority order)
+        for category, patterns in category_patterns.items():
+            for pattern in patterns:
+                if pattern.search(text_to_search):
+                    categorized_articles[category].append(article)
+                    assigned = True
+                    break
+            if assigned:
                 break
 
-        # Fallback: If no keywords matched (or list was empty), assign to "Others"
+        # Fallback: If absolutely no keywords matched, assign to "Others"
         if not assigned:
             categorized_articles["Others"].append(article)
 
