@@ -12,10 +12,10 @@ def build_task_template(
     critical_condition: str = "If an article lacks the specific KPIs, you MUST output exactly the word: NO_EXTRACTION",
 ) -> str:
     return f"""
-        1. Read the provided JSON data.
-        2. Scan the content for the hard data KPIs defined in your Goal.
-        3. Extract the exact sentences or context blocks.
-        4. Output ONLY the raw extracted text blocks natively. Do not add any conversational filler, prefixes, numbering, or labels.
+        1. Read the provided JSON data and scan the entire text from the first to the last sentence.
+        2. Identify and extract all "hard data KPIs" and "guidance figures" defined in the Goal, including those embedded within the narrative.
+        3. Extract the exact sentences or context blocks containing the data without any modification or paraphrasing.
+        4. Output ONLY the raw extracted text blocks natively, excluding all conversational fillers, prefixes, numbering, or labels.
         5. CRITICAL: {critical_condition}
         
         Here are the articles to process:
@@ -26,15 +26,15 @@ AGENT_CONFIGS = {
     "General": {
         "role": "Exact Text Extraction Algorithm: US Macroeconomics & Federal Reserve Policy",
         "goal": """Your absolute goal is to scan the provided text and strictly COPY AND PASTE the exact original sentences that contain hard data or definitive statements regarding the following Macroeconomic KPIs:
-        1. Inflation metrics: CPI (Consumer Price Index), PCE, core inflation rates.
-        2. Federal Reserve policy: Interest rate decisions (basis points), dot plot projections, quantitative tightening (QT) scale.
-        3. Employment data: Non-Farm Payrolls (NFP), unemployment rate.
-        4. Federal Reserve officials' direct quotes indicating hawkish or dovish policy shifts.
-        5. Structural inflation trends (Core PCE trajectory) and Treasury yield curve shifts.
-        6. M2 money supply, structural liquidity, and long-term Fed balance sheet (QT/QE) plans.
-        7. Multi-year employment shifts and structural labor market changes.
-        8. US debt issuance & Treasury yield curve shifts.
-        9. AI-driven productivity metrics in GDP/employment.
+        1. Inflation & Fiat Debasement: CPI, Core PCE trajectory, and asset vs. real inflation divergence.
+        2. Monetary Policy & Liquidity: Fed rate decisions, dot plot projections, QT/QE transitions, and M2/M3 supply.
+        3. Fiscal Dominance: US debt issuance scale, deficit-to-GDP ratios, and Treasury yield curve shifts.
+        4. Forward Guidance: Fed officials' direct quotes and subtle hawkish/dovish semantic pivots.
+        5. Structural Labor Shifts: Non-Farm Payrolls (NFP), unemployment rates, and demographic workforce changes.
+        6. AI Productivity & Deflation: AI integration metrics impacting GDP, enterprise margin expansion, and tech-induced deflation.
+        7. Bitcoin Institutionalization: Corporate and sovereign balance sheet adoption, ETF/derivative flows, and regulatory milestones.
+        8. Compute & Energy Infrastructure: Power capacity and pricing for AI/BTC mining, alongside semiconductor supply chain data.
+        9. Valuation Multiples & Premium Shifts: Forward P/E (Price-to-Earnings), PEG ratio, EV/EBITDA, Price-to-Sales (P/S), and structural changes in historical sector premiums.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="US Macroeconomics & Federal Reserve Policy",
@@ -91,19 +91,13 @@ AGENT_CONFIGS = {
     "Bitcoin": {
         "role": "Exact Text Extraction Algorithm: Bitcoin & Institutional Liquidity",
         "goal": """Your absolute goal is to scan the provided text and strictly COPY AND PASTE the exact original sentences regarding:
-        1. Spot ETF flows: Net inflows/outflows (specific dollar amounts, BTC volumes) for BTC/ETH ETFs.
-        2. Institutional adoption: Corporate treasury purchases or official TradFi crypto service launches.
-        3. On-chain data: Significant whale wallet movements or exchange inflows/outflows.
-        4. Macro liquidity correlation: Statements linking BTC to Fed rate cuts or M2 supply growth.
-        5. Corporate treasury adoption (e.g., FASB accounting changes, sovereign accumulation).
-        6. Global hash rate distribution and structural supply dynamics (halving impacts over time).
-        7. Layer 2 network TVL (Total Value Locked) growth and infrastructural expansion.
-        8. Nation-state/Sovereign strategic reserve adoption.
-        9. Real-World Asset (RWA) tokenization and TradFi integration on L2s.
-        10. Institutional derivatives/options liquidity.
-        11. Structural supply constraints.
-        12. Gold price, Gold ETF flows, Gold mining stocks, Gold supply and demand dynamics.
-        13. Silver price, Silver ETF flows, Silver mining stocks, Silver supply and demand dynamics.
+        1. ETF & Derivatives Liquidity: Net flows for BTC/ETH Spot ETFs and institutional options/derivatives volume.
+        2. Corporate & Sovereign Adoption: Corporate treasury accumulation, TradFi service launches, and nation-state strategic reserves.
+        3. Structural Supply & Fundamentals: Halving impacts, structural supply constraints, and global hash rate distribution.
+        4. On-Chain & Whale Dynamics: Significant whale wallet movements and macro exchange inflows/outflows.
+        5. Macro Liquidity Correlation: Indicators linking BTC price action to Fed rate cuts and global M2 supply growth.
+        6. Ecosystem & TradFi Integration: Layer 2 TVL growth, Real-World Asset (RWA) tokenization, and major crypto industry M&A/IPOs.
+        7. Hard Asset Benchmarks: Gold and Silver price action, ETF flows, and supply/demand dynamics for comparative store-of-value analysis.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="institutional money flows and on-chain facts",
@@ -156,23 +150,22 @@ AGENT_CONFIGS = {
             "miners",
             "mining",
             "supply squeeze",
+            "ipo",
+            "m&a",
+            "funding",
+            "valuation",
+            "acquisition",
         ],
     },
     "Semiconductor": {
         "role": "Exact Text Extraction Algorithm: Semiconductor & Supply Chain",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Revenue and Earnings: Datacenter revenue figures, EPS, and profit margins (Nvidia, AMD, TSMC).
-        2. Production: TSMC CoWoS capacity, foundry utilization rates, and GPU shipment volumes.
-        3. Capital Expenditures (CAPEX): Company spending on new fabs and equipment purchases.
-        4. Multi-year CAPEX cycles (e.g., EUV/High-NA equipment orders).
-        5. Next-gen node roadmaps (2nm/1.4nm development and mass production timelines).
-        6. Structural advanced packaging (CoWoS/SOIC) capacity expansions.
-        7. Silicon Photonics and next-gen advanced packaging (Glass Substrates/CoWoS) bottlenecks.
-        8. Sovereign fab investments (CHIPS Act maturity).
-        9. Custom AI Silicon (ASIC) market shifts.
-        10. Chiplet architecture and heterogeneous integration.
-        11. Mega-scale 'Terafab' clusters and infrastructure build-outs (e.g., Elon Musk's xAI Colossus or regional autonomous tech clusters).
-        12. Statements from key figures (Elon Musk, Jensen Huang, Lisa Su, Pat Gelsinger, Morris Chang) regarding Terafabs, compute scaling, or future foundry investments.
+        1. Financials & CAPEX Cycles: Datacenter revenue, EPS/margins, and multi-year fab equipment spending (EUV/High-NA orders).
+        2. Production & Packaging Bottlenecks: TSMC CoWoS/SOIC capacity, foundry utilization rates, Silicon Photonics, and Glass Substrate constraints.
+        3. Next-Gen Roadmaps & Architecture: 2nm/1.4nm mass production timelines, Custom AI Silicon (ASIC) adoption, and chiplet/heterogeneous integration.
+        4. Terafabs & Sovereign Infrastructure: Mega-scale AI compute clusters (e.g., xAI Colossus) and government-backed fab investments (CHIPS Act maturity).
+        5. Leadership Forward Guidance: Strategic statements from key figures (Huang, Su, Musk, Gelsinger, Chang) regarding compute scaling and foundry expansion.
+        6. Industry Consolidation & Capital Flows: Structural M&A, multi-billion dollar funding rounds, and IPOs across the semiconductor supply chain.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="semiconductor industry data",
@@ -226,21 +219,22 @@ AGENT_CONFIGS = {
             "texas instruments",
             "nxp",
             "memory",
+            "ipo",
+            "m&a",
+            "funding",
+            "valuation",
+            "acquisition",
         ],
     },
     "AI": {
         "role": "Exact Text Extraction Algorithm: AI & Generative Models",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Inference & Compute: Compute costs, latency metrics, and hardware requirements (VRAM usage).
-        2. Enterprise Adoption: Number of API calls, enterprise B2B deployments, or specific monetization metrics.
-        3. Funding & Valuation: Investment amounts, funding rounds for AI startups.
-        4. Data center energy/power infrastructure deals (e.g., Nuclear/SMR contracts for AI data centers).
-        5. Sovereign AI investments (nation-state level AI compute build-outs).
-        6. Enterprise AI ROI (transition metrics from pilot programs to full production deployments).
-        7. AGI development roadmaps and structural leaps in multi-modal capabilities.
-        8. Transition from AI training to Edge AI/Inference (AI PC & Smartphone supercycle).
-        9. Deployment of Autonomous B2B AI Agents.
-        10. Physical power infrastructure bottlenecks (Nuclear/SMR contracts).
+        1. Compute & Edge Transition: Inference costs, hardware constraints (VRAM), and the structural shift from cloud training to Edge AI (AI PC/Smartphone supercycles).
+        2. Enterprise ROI & Autonomous Agents: B2B deployment scale, API monetization, pilot-to-production conversion metrics, and the rollout of autonomous AI agents.
+        3. Power Infrastructure Bottlenecks: Data center energy deals and physical power supply constraints (e.g., Nuclear/SMR contracts).
+        4. Capital Flows & Consolidation: Startup valuations, multi-billion funding rounds, structural M&A, and AI IPOs.
+        5. Sovereign AI Build-outs: Nation-state level investments and strategic domestic compute infrastructure.
+        6. AGI & Frontier Capabilities: Structural leaps in multi-modal capabilities and timeline milestones for AGI development.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="AI industry data",
@@ -291,20 +285,20 @@ AGENT_CONFIGS = {
             "open source",
             "parameters",
             "scaling law",
+            "ipo",
+            "m&a",
+            "acquisition",
         ],
     },
     "Bio": {
         "role": "Exact Text Extraction Algorithm: Biotechnology & Pharmaceuticals",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Clinical Trial Data: Phase 1/2/3 statistical significance (e.g., weight-loss percentages), p-values.
-        2. Regulatory Milestones: FDA PDUFA final decision dates, approvals, or Complete Response Letters (CRLs).
-        3. Manufacturing & Supply: CMO (Contract Manufacturing) capacity constraints, specifically for next-generation GLP-1/obesity drugs (muscle-preserving or oral obesity drugs).
-        4. Patent cliff timelines for major blockbuster drugs.
-        5. Drug pricing policy impacts (e.g., Inflation Reduction Act - IRA effects).
-        6. Expanding clinical indications for existing blockbuster drugs (e.g., GLP-1 applications beyond weight loss).
-        7. Multi-year pipeline depth and structural M&A activities.
-        8. Commercialization milestones of CRISPR/Gene-editing therapies.
-        9. AI-driven drug discovery (AlphaFold) drastically cutting R&D timelines.
+        1. Clinical & Regulatory Milestones: Phase 1/2/3 efficacy data (p-values) and FDA PDUFA decisions (Approvals/CRLs).
+        2. Metabolic & GLP-1 Supercycle: Next-gen obesity pipelines (oral/muscle-preserving), expanding clinical indications, and CMO manufacturing constraints.
+        3. AI-Driven Drug Discovery: Generative biology and AI models (e.g., AlphaFold) accelerating R&D timelines and reducing clinical failure rates.
+        4. Advanced Therapies (CRISPR/Cell): Commercialization, scalability, and clinical milestones for gene-editing and cell therapies.
+        5. Policy & Patent Cliffs: Drug pricing regulatory impacts (e.g., IRA) and revenue defense strategies against major blockbuster patent cliffs.
+        6. Capital Flows & Consolidation: Multi-year pipeline depth, structural M&A, massive funding rounds, and BioTech IPOs.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="biotechnology industry data",
@@ -351,21 +345,21 @@ AGENT_CONFIGS = {
             "immunotherapy",
             "biosimilar",
             "orphan drug",
+            "ipo",
+            "funding",
+            "valuation",
+            "acquisition",
         ],
     },
     "Aerospace": {
         "role": "Exact Text Extraction Algorithm: Aerospace & Space Economy",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Launch Metrics: Launch cost per ton, orbital launch frequency, and payload capacity.
-        2. Commercial Space: Starlink subscriber growth, revenue figures, and terminal deployments.
-        3. Contract Awards: Specific NASA or DoD (Department of Defense) contract values and durations.
-        4. Space economy TAM (Total Addressable Market) expansion, such as Direct-to-Cell satellite coverage.
-        5. Reusability economics and structural margin expansion for launch vehicles.
-        6. Long-term defense budget allocations and structural government contracts.
-        7. Consolidation of defense contractors and multi-year backlog growth.
-        8. Commercialization of Low Earth Orbit (Direct-to-Cell satellite networks).
-        9. Autonomous AI defense tech (drone swarms/hypersonics) DoD budgets.
-        10. Lunar economy (Artemis) contract awards.
+        1. Launch Economics & Reusability: Launch cost per ton, orbital frequency, payload capacity, and structural margin expansion from reusability.
+        2. Commercial LEO & Connectivity: Satellite network metrics (e.g., Starlink subscribers/revenue) and Direct-to-Cell TAM expansion.
+        3. Defense Budgets & Backlogs: Long-term DoD/NASA allocations, specific contract values, and defense contractor multi-year backlog growth.
+        4. Next-Gen Defense Tech: DoD budget shifts toward autonomous AI defense (drone swarms) and hypersonic weapons systems.
+        5. Lunar & Deep Space Economy: Contract awards and infrastructure milestones for lunar missions (e.g., Artemis).
+        6. Capital Flows & Consolidation: Structural M&A, massive funding rounds, valuations, and IPOs across the space and defense sectors.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="aerospace industry data",
@@ -410,19 +404,22 @@ AGENT_CONFIGS = {
             "aviation",
             "aero",
             "military",
+            "ipo",
+            "m&a",
+            "funding",
+            "valuation",
+            "acquisition",
         ],
     },
     "Software": {
         "role": "Exact Text Extraction Algorithm: Enterprise Software & Cloud Services",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Cloud Growth: AWS, Azure, or Google Cloud segment YoY growth and revenue figures.
-        2. Customer Metrics: Net Retention Rate (NRR) and Net Dollar Retention (NDR).
-        3. AI Monetization: Revenue impact from AI Copilot adoptions and ARPU (Average Revenue Per User) increases.
-        4. Multi-year Remaining Performance Obligations (RPO) growth.
-        5. Platform lock-in metrics and structural ecosystem switching costs.
-        6. Transition metrics to AI-agentic workflows (shifts from seat-based pricing to consumption/outcome-based pricing).
-        7. Shift from seat-based SaaS to consumption-based 'AI Agent-as-a-Service'.
-        8. Cybersecurity spending for AI models, and vertical-specific AI platform ecosystem lock-in metrics.
+        1. Cloud Infrastructure & Pipeline: Hyperscaler (AWS, Azure, GCP) YoY revenue growth and multi-year Remaining Performance Obligations (RPO).
+        2. AI Monetization & ARPU: Direct revenue impact from AI Copilot adoptions, enterprise ROI metrics, and structural Average Revenue Per User (ARPU) expansion.
+        3. Pricing Model Paradigm Shift: Transition metrics tracking the shift from traditional seat-based SaaS to consumption and outcome-based 'AI Agent-as-a-Service' models.
+        4. Ecosystem Lock-in & Retention: Net Retention Rate (NRR), Net Dollar Retention (NDR), and structural platform switching costs within AI-driven workflows.
+        5. AI-Native Cybersecurity: Enterprise spending shifts toward AI model defense, automated SecOps, and vertical-specific security ecosystems.
+        6. Industry Consolidation & Capital Flows: Enterprise software M&A, massive late-stage funding rounds, and high-profile AI/SaaS IPOs.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="software industry data",
@@ -467,20 +464,21 @@ AGENT_CONFIGS = {
             "adobe",
             "workday",
             "palantir",
+            "ipo",
+            "m&a",
+            "funding",
+            "valuation",
+            "acquisition",
         ],
     },
     "Others": {
         "role": "Exact Text Extraction Algorithm: Mega-Cap Tech & Consumer",
         "goal": """Your absolute goal is to strictly COPY AND PASTE the exact original sentences regarding:
-        1. Hardware Delivery Units: Specific delivery/shipment numbers (e.g., Tesla EV deliveries, Apple iPhone shipments).
-        2. Financial Health: Free Cash Flow (FCF) figures and operating margins.
-        3. Retail & Logistics: Logistics cost reductions and supply chain bottlenecks for mega-cap retailers (e.g., Amazon).
-        4. Supply chain restructuring (e.g., China+1 strategies, nearshoring, offshoring).
-        5. Structural operating margin expansion via robotics, automation, and AI integration.
-        6. Long-term capital return programs (massive share buybacks or structural dividend increases).
-        7. Humanoid robotics and autonomous driving (Robotaxi) scaling metrics. FSD (Full Self-Driving) progress.
-        8. US manufacturing reshoring/automation impacts on operating margins.
-        9. Mega-cap FCF driven structural share buybacks.
+        1. Hardware & Autonomous Scaling: Shipment volumes (e.g., EVs, smartphones), FSD/Robotaxi adoption metrics, and humanoid robotics milestones.
+        2. Financials & Capital Returns: Free Cash Flow (FCF) generation, operating margin shifts, and FCF-driven massive share buybacks or dividend programs.
+        3. Supply Chain Restructuring: "China+1" strategies, nearshoring/reshoring metrics, and mega-cap logistics cost reductions.
+        4. Automation & Margin Expansion: Structural operating margin growth via physical robotics, automation, and enterprise AI integration.
+        5. Corporate Actions & Anti-Trust: Major structural M&A, high-profile mega-cap IPOs, and critical regulatory anti-trust rulings.
         If a sentence contains any of these KPIs, extract it entirely. If the context requires the preceding or following sentence to make sense of the number, extract that surrounding block of text EXACTLY as written.""",
         "backstory": build_backstory(
             industry_focus="mega-cap and consumer industry data",
@@ -528,6 +526,12 @@ AGENT_CONFIGS = {
             "shareholder return",
             "walmart",
             "costco",
+            "ipo",
+            "m&a",
+            "funding",
+            "valuation",
+            "acquisition",
+            "anti-trust",
         ],
     },
 }
