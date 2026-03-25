@@ -149,7 +149,7 @@ def generate_cio_commentary(
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=120)
+        response = requests.post(url, json=payload, timeout=None)
         response.raise_for_status()
         result = response.json()
         return result.get("message", {}).get("content", "").strip()
