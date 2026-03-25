@@ -161,13 +161,14 @@ def run_extractor(data_dir: str = None):
 
             # Fetch the dynamic configuration for this role
             config = get_agent_config(category)
-            keywords = config.get("keywords", [])
-            # Compile regex patterns for exact word boundary matches
-            keyword_patterns = (
-                [re.compile(r"\b" + re.escape(kw.lower()) + r"\b") for kw in keywords]
-                if keywords
-                else []
-            )
+
+            # keywords = config.get("keywords", [])
+            # # Compile regex patterns for exact word boundary matches
+            # keyword_patterns = (
+            #     [re.compile(r"\b" + re.escape(kw.lower()) + r"\b") for kw in keywords]
+            #     if keywords
+            #     else []
+            # )
 
             # Build the strict System Prompt
             system_prompt = (
@@ -183,13 +184,13 @@ def run_extractor(data_dir: str = None):
                 content = article.get("content", "")
 
                 # 1st Pass: Python Keyword Pre-filtering
-                if keyword_patterns:
-                    combined_text = (title + " " + content).lower()
-                    if not any(
-                        pattern.search(combined_text) for pattern in keyword_patterns
-                    ):
-                        # Skip this article completely if no keywords match
-                        continue
+                # if keyword_patterns:
+                #     combined_text = (title + " " + content).lower()
+                #     if not any(
+                #         pattern.search(combined_text) for pattern in keyword_patterns
+                #     ):
+                #         # Skip this article completely if no keywords match
+                #         continue
 
                 input_text = (
                     f"\n--- BEGIN ARTICLE ---\n"
@@ -242,7 +243,7 @@ def run_extractor(data_dir: str = None):
                         ],
                         "stream": False,
                         "options": {
-                            "num_ctx": 4096,
+                            "num_ctx": 8192,
                             "num_predict": 1500,
                             "temperature": 0.0,
                             "top_p": 0.1,
