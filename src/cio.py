@@ -27,8 +27,7 @@ LOG_FILE = "logs/cio.log"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
-setup_logger(LOG_FILE)
-logger = logging.getLogger(__name__)
+logger = setup_logger(LOG_FILE, __name__)
 
 import requests
 
@@ -163,7 +162,7 @@ def run_cio():
         # Identify today's date for file paths
         today_str = datetime.now().strftime("%Y%m%d")
 
-        logging.info(f"Starting CIO Pipeline for {today_str}")
+        logger.info(f"Starting CIO Pipeline for {today_str}")
 
         data_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
@@ -190,24 +189,24 @@ def run_cio():
         # 1. Provide input files
         data = {}
         if os.path.exists(news_file):
-            logging.info(f"Loading market data from {news_file}")
+            logger.info(f"Loading market data from {news_file}")
             with open(news_file, "r", encoding="utf-8") as f:
                 try:
                     data = json.load(f)
                 except json.JSONDecodeError:
-                    logging.error(f"Failed to parse JSON from {news_file}")
+                    logger.error(f"Failed to parse JSON from {news_file}")
         else:
-            logging.warning(
+            logger.warning(
                 f"{news_file} not found. Proceeding with empty market/schedule data."
             )
 
         facts_text = ""
         if os.path.exists(facts_file):
-            logging.info(f"Loading extracted facts from {facts_file}")
+            logger.info(f"Loading extracted facts from {facts_file}")
             with open(facts_file, "r", encoding="utf-8") as f:
                 facts_text = f.read()
         else:
-            logging.warning(f"{facts_file} not found. Proceeding with empty facts.")
+            logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
 
         # 2. Format Market Indicators
         market_text = format_market_indicators(data)
@@ -216,16 +215,16 @@ def run_cio():
         schedule_text = format_weekly_schedule(data)
 
         # 4. Generate AI Commentary
-        logging.info("Generating AI commentary from local Ollama...")
+        logger.info("Generating AI commentary from local Ollama...")
         try:
             commentary = generate_cio_commentary(market_text, schedule_text, facts_text)
-            logging.info("Successfully generated AI commentary.")
+            logger.info("Successfully generated AI commentary.")
         except Exception as e:
-            logging.error(f"Failed to generate AI commentary: {e}")
+            logger.error(f"Failed to generate AI commentary: {e}")
             commentary = "Error generating commentary."
 
         # 5. Merge output to target format
-        logging.info("Merging content into final report format...")
+        logger.info("Merging content into final report format...")
         report = (
             f"## {today_str}\n\n"
             "### Daily Point\n"
@@ -240,7 +239,7 @@ def run_cio():
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(report)
 
-        logging.info(f"Report successfully generated and saved to {output_file}")
+        logger.info(f"Report successfully generated and saved to {output_file}")
 
     except KeyboardInterrupt:
         logger.info("Shutdown signal received. Process terminating.")
