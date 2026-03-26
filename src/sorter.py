@@ -18,8 +18,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
-setup_logger(LOG_FILE)
-logger = logging.getLogger(__name__)
+logger = setup_logger(LOG_FILE, __name__)
 
 
 def sort_articles_by_category(articles: list) -> dict:

@@ -17,8 +17,7 @@ LOG_FILE = "logs/translator.log"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from shared_logger import setup_logger
 
-setup_logger(LOG_FILE)
-logger = logging.getLogger(__name__)
+logger = setup_logger(LOG_FILE, __name__)
 
 # Suppress noisy INFO logs from external libraries
 logging.getLogger("deepl").setLevel(logging.WARNING)
