@@ -14,7 +14,9 @@ import logging
 import pytz
 import holidays
 
-logger = logging.getLogger(__name__)
+from shared_logger import setup_logger
+
+logger = setup_logger(logger_name=__name__)
 
 
 def is_us_trading_day() -> bool:
