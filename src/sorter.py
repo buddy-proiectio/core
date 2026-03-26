@@ -89,21 +89,24 @@ def sort_articles_by_category(articles: list) -> dict:
 
     # 2. Routing Logic
     for article in articles:
-        assigned = False
         text_to_search = f"{article.get('title', '')} | {article.get('content', '')}"
 
-        # Evaluate against patterns (First match wins based on AGENT_CONFIGS priority order)
+        # Calculate a score for each category based on keyword frequencies
+        category_scores = {category: 0 for category in routing_map.keys()}
+
         for category, patterns in category_patterns.items():
             for pattern in patterns:
-                if pattern.search(text_to_search):
-                    categorized_articles[category].append(article)
-                    assigned = True
-                    break
-            if assigned:
-                break
+                # Count all non-overlapping occurrences of the pattern
+                matches = len(pattern.findall(text_to_search))
+                category_scores[category] += matches
 
-        # Fallback: If absolutely no keywords matched, assign to "Others"
-        if not assigned:
+        # Find the category with the highest score
+        best_category = max(category_scores, key=category_scores.get)
+
+        # If there's at least one match, assign to the best scoring category. Otherwise, fallback to 'Others'
+        if category_scores[best_category] > 0:
+            categorized_articles[best_category].append(article)
+        else:
             categorized_articles["Others"].append(article)
 
     # 3. Output Structure
