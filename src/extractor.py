@@ -58,7 +58,7 @@ def run_extractor(data_dir: str = None):
     """
 
     # --- CONFIGURATION ---
-    SEMANTIC_SIMILARITY_THRESHOLD = 0.85
+    SEMANTIC_SIMILARITY_THRESHOLD = 0.82
     # ---------------------
 
     # 0. Setup directories
