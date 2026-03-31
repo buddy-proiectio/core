@@ -29,6 +29,39 @@ import deepl
 DEEPL_API_KEY = "41415273-1167-e96a-d51f-7c6d52c06ac2:fx"
 deepl_translator = deepl.Translator(DEEPL_API_KEY)
 
+DEEPL_REMAINING_CHARS = None
+
+
+def init_deepl_usage():
+    global DEEPL_REMAINING_CHARS
+    try:
+        usage = deepl_translator.get_usage()
+        if usage.character.limit is not None:
+            DEEPL_REMAINING_CHARS = usage.character.limit - usage.character.count
+            DEEPL_REMAINING_CHARS = max(0, DEEPL_REMAINING_CHARS)
+        else:
+            DEEPL_REMAINING_CHARS = float("inf")
+        logger.info(f"DeepL remaining quota: {DEEPL_REMAINING_CHARS} characters")
+    except Exception as e:
+        logger.error(f"Failed to fetch DeepL usage: {e}. Defaulting to 0.")
+        DEEPL_REMAINING_CHARS = 0
+
+
+def chunk_text(text: str, limit: int = 4000) -> list[str]:
+    """Simple text chunker to ensure no piece exceeds the limit."""
+    chunks = []
+    while len(text) > limit:
+        split_index = text.rfind(" ", 0, limit)
+        if split_index == -1:
+            split_index = limit
+
+        chunks.append(text[:split_index])
+        text = text[split_index:].lstrip()
+
+    if text:
+        chunks.append(text)
+    return chunks
+
 
 def make_polite(text: str) -> str:
     """
@@ -156,41 +189,59 @@ def make_polite(text: str) -> str:
 
 
 def translate_text(text: str) -> str:
+    global DEEPL_REMAINING_CHARS
+
     if not text.strip():
         return text
 
-    max_retries = 3
-    delay = 2  # retry delay in seconds
+    if DEEPL_REMAINING_CHARS is None:
+        init_deepl_usage()
 
-    # First attempt with DeepL
-    for attempt in range(max_retries):
-        try:
-            result = deepl_translator.translate_text(text, target_lang="KO")
-            return make_polite(result.text)
-        except deepl.QuotaExceededException:
-            logger.warning(
-                "DeepL quota exceeded. Falling back to Google Translator immediately."
-            )
-            break
-        except Exception as e:
-            logger.warning(
-                f"DeepL translation failed (attempt {attempt + 1}/{max_retries}): {e}"
-            )
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-            else:
-                logger.error(
-                    "Max retries reached for DeepL. Falling back to Google Translator."
+    if DEEPL_REMAINING_CHARS > 0 and DEEPL_REMAINING_CHARS >= len(text):
+        max_retries = 2
+        delay = 2  # retry delay in seconds
+
+        for attempt in range(max_retries):
+            try:
+                result = deepl_translator.translate_text(text, target_lang="KO")
+                DEEPL_REMAINING_CHARS -= len(text)
+                return make_polite(result.text)
+            except deepl.QuotaExceededException:
+                logger.warning(
+                    "DeepL quota exceeded. Falling back to Google Translator."
                 )
+                DEEPL_REMAINING_CHARS = 0
                 break
+            except Exception as e:
+                logger.warning(
+                    f"DeepL translation failed (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "Max retries reached for DeepL. Falling back to Google Translator."
+                    )
+                    break
 
-    # Fallback to Google Translator if DeepL failed or quota exceeded
+    # Fallback to Google Translator if DeepL exhausted or text is too large
+    chunks = chunk_text(text, limit=4000)
+    translated_chunks = []
+
     try:
-        # To avoid IP block from Google Translator
         time.sleep(0.1)
         google_translator = GoogleTranslator(source="en", target="ko")
-        translated = google_translator.translate(text)
-        return make_polite(translated)
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                translated_chunks.append(chunk)
+                continue
+            if i > 0:
+                time.sleep(0.1)
+            translated = google_translator.translate(chunk)
+            translated_chunks.append(translated)
+
+        final_translated = "".join(translated_chunks)
+        return make_polite(final_translated)
     except Exception as e:
         logger.error(f"Fallback Google translation failed: {e}")
         raise e
