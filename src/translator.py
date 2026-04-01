@@ -237,7 +237,30 @@ def translate_text(text: str) -> str:
                 continue
             if i > 0:
                 time.sleep(0.1)
-            translated = google_translator.translate(chunk)
+
+            try:
+                translated = google_translator.translate(chunk)
+            except Exception as e:
+                # If a large unpunctuated block fails, split into smaller manageable pieces
+                logger.warning(
+                    f"Google Translator chunk failed: {e}. Retrying with smaller chunks..."
+                )
+                sub_chunks = chunk_text(chunk, limit=200)
+                sub_translated = []
+                for sc in sub_chunks:
+                    if not sc.strip():
+                        sub_translated.append(sc)
+                        continue
+                    time.sleep(0.1)
+                    try:
+                        sub_translated.append(google_translator.translate(sc))
+                    except Exception as inner_e:
+                        logger.warning(
+                            f"Sub-chunk translation failed: {inner_e}. Keeping original."
+                        )
+                        sub_translated.append(sc)
+                translated = " ".join(sub_translated)
+
             translated_chunks.append(translated)
 
         final_translated = "".join(translated_chunks)
