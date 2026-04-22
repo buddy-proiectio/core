@@ -8,9 +8,9 @@ from cio import run_cio
 from translator import run_translator
 import os
 import subprocess
+import time
 from datetime import datetime
 import glob
-import logging
 import pytz
 import holidays
 
@@ -54,31 +54,40 @@ def pull_data_from_cloud():
     local_file = f"{local_dir}/daily_news_{today}.json"
 
     os.makedirs(local_dir, exist_ok=True)
-
     scp_command = f"scp -i {ORACLE_SSH_KEY} -o StrictHostKeyChecking=no ubuntu@{ORACLE_IP_ADDRESS}:{remote_file} {local_file}"
 
-    try:
-        logger.info(f"Pulling data from oracle cloud storage... ({remote_file})")
+    max_retries = 5
+    retry_delay = 60  # seconds
 
-        subprocess.run(
-            scp_command, shell=True, check=True, capture_output=True, text=True
-        )
-
-        if os.path.exists(local_file):
+    for attempt in range(1, max_retries + 1):
+        try:
             logger.info(
-                f"Successfully pulled data from oracle cloud storage: {local_file}"
-            )
-        else:
-            logger.error(
-                f"Not found {local_file} after pulling from oracle cloud storage"
-            )
-            raise FileNotFoundError(
-                f"Not found {local_file} after pulling from oracle cloud storage"
+                f"Pulling data from oracle cloud storage... (Attempt {attempt}/{max_retries})"
             )
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to pull data from oracle cloud storage: {e}")
-        raise
+            result = subprocess.run(
+                scp_command, shell=True, check=True, capture_output=True, text=True
+            )
+
+            if os.path.exists(local_file):
+                logger.info(f"Successfully pulled data: {local_file}")
+                return  # Success, exit function
+            else:
+                raise FileNotFoundError(f"File not found after scp: {local_file}")
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            stderr_msg = ""
+            if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+                stderr_msg = f" | Details: {e.stderr.strip()}"
+
+            logger.warning(f"Attempt {attempt} failed: {e}{stderr_msg}")
+
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error("All retries failed.")
+                raise
 
 
 def run_all():
