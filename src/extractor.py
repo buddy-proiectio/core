@@ -182,6 +182,10 @@ def run_extractor(data_dir: str = None):
                 title = article.get("title", f"Article {idx+1}")
                 content = article.get("content", "")
 
+                # Remove emojis from input to save tokens and ensure clean extraction
+                title = re.sub(r"[\U00010000-\U0010ffff]", "", title)
+                content = re.sub(r"[\U00010000-\U0010ffff]", "", content)
+
                 # 1st Pass: Python Keyword Pre-filtering
                 # if keyword_patterns:
                 #     combined_text = (title + " " + content).lower()
@@ -264,11 +268,14 @@ def run_extractor(data_dir: str = None):
                             logger.info(f"Task {idx:02d} [{category}] Extracted!")
                             # Replace all newlines with a single space to form a continuous block
                             output = re.sub(r"\s+", " ", output).strip()
+                            # Final emoji removal from LLM output
+                            output = re.sub(r"[\U00010000-\U0010ffff]", "", output)
 
                             # Format the result with python
                             raw_title = article.get("title", f"Article {idx}")
-                            # Strip HTML tags
+                            # Strip HTML tags and emojis
                             clean_title = re.sub(r"<.*?>", "", raw_title).strip()
+                            clean_title = re.sub(r"[\U00010000-\U0010ffff]", "", clean_title)
                             article_url = article.get("url", "#")
 
                             # Dedup check: If output text is just the title, printing it repeats the title.
