@@ -101,15 +101,37 @@ def run_all():
     After translator finishes successfully, cleans up all files in the /data directory
     EXCEPT for the final alpha_signal_*.md file.
     """
-    logger.info("Starting Buddy Core Pipeline...")
-
-    if not is_us_trading_day():
+    # 1. New York Timezone Check (After 07:30 NY time)
+    us_tz = pytz.timezone("America/New_York")
+    ny_now = datetime.now(us_tz)
+    if ny_now.time() < datetime.strptime("07:30", "%H:%M").time():
         logger.info(
-            "US Market is closed (Weekend/Holiday). Skipping pipeline execution today."
+            f"Current NY time ({ny_now.strftime('%H:%M')}) is before 07:30. Skipping execution."
         )
         return
 
+    # 2. Duplicate Execution Prevention (Lock File)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lock_file = os.path.join(project_root, "logs", "buddy.lock")
+
+    if os.path.exists(lock_file):
+        logger.warning("Already running (buddy.lock exists). Terminating pipeline.")
+        return
+
     try:
+        # Create lock file
+        os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+        with open(lock_file, "w") as f:
+            f.write(str(os.getpid()))
+
+        logger.info("Starting Buddy Core Pipeline...")
+
+        if not is_us_trading_day():
+            logger.info(
+                "US Market is closed (Weekend/Holiday). Skipping pipeline execution today."
+            )
+            return
+
         logger.info(f"[0/4] Pulling Sieve data...")
         pull_data_from_cloud()
         logger.info("-----------------------------------------------------")
@@ -130,8 +152,7 @@ def run_all():
         success = run_translator()
         logger.info("-----------------------------------------------------")
 
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        data_dir = os.path.join(base_dir, "data")
+        data_dir = os.path.join(project_root, "data")
 
         if success:
             logger.info(
@@ -146,6 +167,11 @@ def run_all():
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
         raise
+    finally:
+        # Cleanup (Remove lock file)
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            logger.info("Lock file removed.")
 
 
 def _cleanup_data_files(data_dir: str):
