@@ -1,21 +1,24 @@
-# Data Gathering (Sieve)
-feedparser>=6.0.11
-requests>=2.32.3
-schedule>=1.2.2
-pytz>=2024.1
-python-dateutil>=2.8.2
-cloudscraper>=1.2.71
-trafilatura>=1.8.0
-yfinance>=0.2.37
-lxml_html_clean>=0.4.3
+# --- AI & NLP (Local LLM / RAG) ---
+torch
+sentence-transformers
+transformers
+huggingface_hub
 
-# Utilities
-tzlocal>=5.3.1
-holidays>=0.91
+# --- Translation ---
+deep-translator
+deepl
 
-# AI Agents (Extractor - Local LLM)
-sentence-transformers>=3.0.0
+# --- Data Handling & Scheduling ---
+apscheduler
+pytz
+tzlocal
+holidays
+python-dateutil
 
-# Translation
-deep-translator>=1.11.4
-deepl>=1.14.0
+# --- Shared (Needed for local Sieve development) ---
+feedparser
+requests
+schedule
+cloudscraper
+trafilatura
+lxml
