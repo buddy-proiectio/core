@@ -11,8 +11,7 @@ import json
 import os
 import sys
 import glob
-import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Eagerly import apscheduler and concurrent.futures to prevent lazy loading
 # during script shutdown, which causes "can't register atexit after shutdown"
@@ -25,7 +24,9 @@ except ImportError:
 LOG_FILE = "logs/cio.log"
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from shared_logger import setup_logger
+# Add project root to sys.path to allow importing from 'shared'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.shared_logger import setup_logger
 
 logger = setup_logger(LOG_FILE, __name__)
 
@@ -60,6 +61,7 @@ CRITICAL RULES:
    - You MUST EXACTLY start your response with "Good morning." followed by a line break.
    - DO NOT output any markdown headers or bullet points. Write in smooth, continuous text paragraphs.
    - The total length must be between 200 and 3000 characters.
+   - You MUST conclude your commentary with a thoughtful, profound piece of advice regarding life and marriage, reflecting the wisdom of a self-made billionaire who values not just wealth, but a successful personal life.
 3. Content (The Synthesis - WEAVE THEM TOGETHER):
    - Analyze the <MARKET_INDICATORS> to set the current market mood, but dismiss short-term noise.
    - Reference key upcoming events from the <WEEKLY_SCHEDULE>.
@@ -72,29 +74,60 @@ CRITICAL RULES:
 """
 
 
-def format_market_indicators(data):
+def format_market_map(data, display_only=False):
     """
-    Create the bulleted list of indices. Ensure signs (+/-) are formatted correctly.
+    Format the market map. If display_only is True, return only Dow, S&P, Nasdaq, Bitcoin.
+    Otherwise, return a comprehensive text representation of sectors and industries for the LLM.
     """
-    if not data or "market_indicators" not in data:
-        return ""
+    if not data or "market_map" not in data:
+        # Fallback to old format just in case
+        if "market_indicators" in data:
+            market_map = {"Indices": data["market_indicators"], "Sectors": {}}
+        else:
+            return ""
+    else:
+        market_map = data["market_map"]
 
     lines = []
-    for name, info in data["market_indicators"].items():
-        price = info.get("price", "0")
-        change = info.get("change", "0")
 
-        # Ensure change formatting has the correct sign and includes a percentage
-        try:
-            # Strip '%' if it's already there to parse as float
-            change_float = float(str(change).replace("%", "").strip())
-            change_str = f"+{change_float}%" if change_float > 0 else f"{change_float}%"
-        except ValueError:
-            change_str = f"{change}"
-            if not change_str.endswith("%"):
-                change_str += "%"
+    # 1. Indices
+    indices = market_map.get("Indices", {})
+    display_keys = ["Dow Jones", "S&P 500", "Nasdaq", "Bitcoin"]
 
-        lines.append(f"_ {name} {price} ({change_str})")
+    for name in display_keys:
+        if name in indices:
+            info = indices[name]
+            price = info.get("price", "0")
+            change = info.get("change", "0")
+
+            try:
+                change_float = float(str(change).replace("%", "").strip())
+                change_str = (
+                    f"+{change_float}%" if change_float > 0 else f"{change_float}%"
+                )
+            except ValueError:
+                change_str = f"{change}"
+                if not change_str.endswith("%"):
+                    change_str += "%"
+
+            lines.append(f"_ {name} {price} ({change_str})")
+
+    if display_only:
+        return "\n".join(lines)
+
+    # 2. Complete Market Map for Prompt
+    lines.append("\n[Detailed Market Map (S&P 500 + Target Tickers)]")
+    sectors = market_map.get("Sectors", {})
+    for sec_name, sec_data in sectors.items():
+        lines.append(f"\nSector: {sec_name} (Avg: {sec_data.get('sector_avg')})")
+        for ind_name, ind_data in sec_data.get("industries", {}).items():
+            lines.append(
+                f"  Industry: {ind_name} (Avg: {ind_data.get('industry_avg')})"
+            )
+            stocks_line = []
+            for t_name, t_data in ind_data.get("details", {}).items():
+                stocks_line.append(f"{t_name}: {t_data.get('change')}")
+            lines.append(f"    Stocks: {', '.join(stocks_line)}")
 
     return "\n".join(lines)
 
@@ -208,8 +241,9 @@ def run_cio():
         else:
             logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
 
-        # 2. Format Market Indicators
-        market_text = format_market_indicators(data)
+        # 2. Format Market Map
+        market_text_for_prompt = format_market_map(data, display_only=False)
+        market_text_for_report = format_market_map(data, display_only=True)
 
         # 3. Format Weekly Schedule
         schedule_text = format_weekly_schedule(data)
@@ -217,7 +251,9 @@ def run_cio():
         # 4. Generate AI Commentary
         logger.info("Generating AI commentary from local Ollama...")
         try:
-            commentary = generate_cio_commentary(market_text, schedule_text, facts_text)
+            commentary = generate_cio_commentary(
+                market_text_for_prompt, schedule_text, facts_text
+            )
             logger.info("Successfully generated AI commentary.")
         except Exception as e:
             logger.error(f"Failed to generate AI commentary: {e}")
@@ -228,7 +264,7 @@ def run_cio():
         report = (
             f"## {today_str}\n\n"
             "### Daily Point\n"
-            f"{market_text}\n\n"
+            f"{market_text_for_report}\n\n"
             f"{commentary}\n\n"
             "### Weekly Schedule\n"
             f"{schedule_text}\n\n"

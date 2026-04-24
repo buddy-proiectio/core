@@ -6,6 +6,7 @@ from sorter import run_sorter
 from extractor import run_extractor
 from cio import run_cio
 from translator import run_translator
+import sys
 import os
 import subprocess
 import time
@@ -14,7 +15,9 @@ import glob
 import pytz
 import holidays
 
-from shared_logger import setup_logger
+# Add project root to sys.path to allow importing from 'shared'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.shared_logger import setup_logger
 
 logger = setup_logger(logger_name=__name__)
 

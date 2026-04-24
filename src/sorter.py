@@ -16,7 +16,9 @@ LOG_FILE = "logs/sorter.log"
 import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from shared_logger import setup_logger
+# Add project root to sys.path to allow importing from 'shared'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.shared_logger import setup_logger
 
 logger = setup_logger(LOG_FILE, __name__)
 
