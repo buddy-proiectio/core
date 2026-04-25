@@ -8,9 +8,7 @@ huggingface_hub
 deep-translator
 
 # --- Data Handling & Scheduling ---
-apscheduler
 pytz
-tzlocal
 holidays
 python-dateutil
 
@@ -20,4 +18,3 @@ requests
 schedule
 cloudscraper
 trafilatura
-lxml
