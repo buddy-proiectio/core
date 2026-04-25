@@ -6,7 +6,6 @@ huggingface_hub
 
 # --- Translation ---
 deep-translator
-deepl
 
 # --- Data Handling & Scheduling ---
 apscheduler

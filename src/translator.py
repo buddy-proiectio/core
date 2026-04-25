@@ -22,31 +22,9 @@ from shared.shared_logger import setup_logger
 logger = setup_logger(LOG_FILE, __name__)
 
 # Suppress noisy INFO logs from external libraries
-logging.getLogger("deepl").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 from deep_translator import GoogleTranslator
-import deepl
-
-DEEPL_API_KEY = "41415273-1167-e96a-d51f-7c6d52c06ac2:fx"
-deepl_translator = deepl.Translator(DEEPL_API_KEY)
-
-DEEPL_REMAINING_CHARS = None
-
-
-def init_deepl_usage():
-    global DEEPL_REMAINING_CHARS
-    try:
-        usage = deepl_translator.get_usage()
-        if usage.character.limit is not None:
-            DEEPL_REMAINING_CHARS = usage.character.limit - usage.character.count
-            DEEPL_REMAINING_CHARS = max(0, DEEPL_REMAINING_CHARS)
-        else:
-            DEEPL_REMAINING_CHARS = float("inf")
-        logger.info(f"DeepL remaining quota: {DEEPL_REMAINING_CHARS} characters")
-    except Exception as e:
-        logger.error(f"Failed to fetch DeepL usage: {e}. Defaulting to 0.")
-        DEEPL_REMAINING_CHARS = 0
 
 
 def chunk_text(text: str, limit: int = 4000) -> list[str]:
@@ -191,42 +169,9 @@ def make_polite(text: str) -> str:
 
 
 def translate_text(text: str) -> str:
-    global DEEPL_REMAINING_CHARS
-
     if not text.strip():
         return text
 
-    if DEEPL_REMAINING_CHARS is None:
-        init_deepl_usage()
-
-    if DEEPL_REMAINING_CHARS > 0 and DEEPL_REMAINING_CHARS >= len(text):
-        max_retries = 2
-        delay = 2  # retry delay in seconds
-
-        for attempt in range(max_retries):
-            try:
-                result = deepl_translator.translate_text(text, target_lang="KO")
-                DEEPL_REMAINING_CHARS -= len(text)
-                return make_polite(result.text)
-            except deepl.QuotaExceededException:
-                logger.warning(
-                    "DeepL quota exceeded. Falling back to Google Translator."
-                )
-                DEEPL_REMAINING_CHARS = 0
-                break
-            except Exception as e:
-                logger.warning(
-                    f"DeepL translation failed (attempt {attempt + 1}/{max_retries}): {e}"
-                )
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
-                else:
-                    logger.error(
-                        "Max retries reached for DeepL. Falling back to Google Translator."
-                    )
-                    break
-
-    # Fallback to Google Translator if DeepL exhausted or text is too large
     chunks = chunk_text(text, limit=4000)
     translated_chunks = []
 
@@ -268,7 +213,7 @@ def translate_text(text: str) -> str:
         final_translated = "".join(translated_chunks)
         return make_polite(final_translated)
     except Exception as e:
-        logger.error(f"Fallback Google translation failed: {e}")
+        logger.error(f"Google translation failed: {e}")
         raise e
 
 
