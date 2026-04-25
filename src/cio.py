@@ -53,20 +53,25 @@ Below is the data for today's market:
 {extracted_facts_text}
 </EXTRACTED_FACTS>
 
+<PAST_MEMORY>
+{past_memory_text}
+</PAST_MEMORY>
+
 Your task is to write the "Daily Point" morning commentary synthesizing all the data above.
 
 CRITICAL RULES:
 1. Language & Tone: Write strictly in polite, professional English. Maintain the calm, decisive, and deeply insightful tone of a billionaire mentor guiding a protégé. Focus on real-world wealth building, not academic analysis.
-2. Exact Structure (Sandwich Method): 
+2. Continuity & Synthesis: If <PAST_MEMORY> is provided, review the historical progression of the market and our past analyses. Seamlessly weave insights from past trends with today's <EXTRACTED_FACTS> and <MARKET_INDICATORS>. Use phrases like "Building on our recent observations..." or "As we anticipated earlier this week..." to demonstrate long-term consistent logic.
+3. Exact Structure (Sandwich Method): 
    - You MUST EXACTLY start your response with "Good morning." followed by a line break.
    - DO NOT output any markdown headers or bullet points. Write in smooth, continuous text paragraphs.
    - The total length must be between 200 and 3000 characters.
-3. Content (The Synthesis - WEAVE THEM TOGETHER):
+4. Content (The Synthesis - WEAVE THEM TOGETHER):
    - Analyze the <MARKET_INDICATORS> to set the current market mood, but dismiss short-term noise.
    - Reference key upcoming events from the <WEEKLY_SCHEDULE>.
    - Connect these with the news from <EXTRACTED_FACTS> and bridge them to the 2026 mid-to-long-term Mega Trends.
    - Provide a clear, practical perspective on how these trends impact long-term asset accumulation.
-4. Absolute Restrictions:
+5. Absolute Restrictions:
    - DO NOT hallucinate facts.
    - DO NOT output the raw lists of indices or schedules.
    - Output ONLY your synthesized English commentary paragraph.
@@ -152,7 +157,7 @@ def format_weekly_schedule(data):
 
 
 def generate_cio_commentary(
-    market_text: str, schedule_text: str, facts_text: str
+    market_text: str, schedule_text: str, facts_text: str, past_memory_text: str = ""
 ) -> str:
     """
     Generate narrative commentary using local Ollama.
@@ -161,6 +166,9 @@ def generate_cio_commentary(
         market_indicators_text=market_text,
         weekly_schedule_text=schedule_text,
         extracted_facts_text=facts_text,
+        past_memory_text=(
+            past_memory_text if past_memory_text else "No past memory available."
+        ),
     )
 
     url = "http://localhost:11434/api/chat"
@@ -240,6 +248,32 @@ def run_cio():
         else:
             logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
 
+        # Extract past memory for continuity
+        memory_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory"
+        )
+        os.makedirs(memory_dir, exist_ok=True)
+
+        past_memory_text = ""
+        memory_files = sorted(glob.glob(os.path.join(memory_dir, "memory_*.txt")))
+        memory_files = [f for f in memory_files if today_str not in f]
+
+        # Take the last 3 days to avoid exceeding context window
+        recent_memory_files = memory_files[-3:]
+        if recent_memory_files:
+            logger.info(
+                f"Loading past memory from {len(recent_memory_files)} recent files."
+            )
+            for m_file in recent_memory_files:
+                try:
+                    with open(m_file, "r", encoding="utf-8") as f:
+                        past_memory_text += (
+                            f"--- Memory from {os.path.basename(m_file)} ---\n"
+                        )
+                        past_memory_text += f.read() + "\n\n"
+                except Exception as e:
+                    logger.warning(f"Failed to load memory file {m_file}: {e}")
+
         # 2. Format Market Map
         market_text_for_prompt = format_market_map(data, display_only=False)
         market_text_for_report = format_market_map(data, display_only=True)
@@ -251,12 +285,25 @@ def run_cio():
         logger.info("Generating AI commentary from local Ollama...")
         try:
             commentary = generate_cio_commentary(
-                market_text_for_prompt, schedule_text, facts_text
+                market_text_for_prompt, schedule_text, facts_text, past_memory_text
             )
             logger.info("Successfully generated AI commentary.")
         except Exception as e:
             logger.error(f"Failed to generate AI commentary: {e}")
             commentary = "Error generating commentary."
+
+        # Save today's context into the memory folder (English only, pre-translation)
+        logger.info("Saving today's context to memory...")
+        today_memory = f"Date: {today_str}\n\nMarket Map:\n{market_text_for_report}\n\nCommentary:\n{commentary}\n\nFacts:\n{facts_text}"
+        try:
+            with open(
+                os.path.join(memory_dir, f"memory_{today_str}.txt"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                f.write(today_memory)
+        except Exception as e:
+            logger.warning(f"Failed to save today's memory: {e}")
 
         # 5. Merge output to target format
         logger.info("Merging content into final report format...")
