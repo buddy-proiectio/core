@@ -51,7 +51,6 @@ The pipeline consists of five key modules and an orchestrator, each handling a s
 
 **Role:** Automated Pipeline Execution
 
-- Scheduled via `crontab` to run automatically every day at 03:30 AM.
 - Validates if the current date is a US trading day (skipping weekends and NYSE holidays).
 - Securely pulls the Sieve's daily payload from the Oracle Cloud server via SCP.
 - Sequentially processes the pipeline: **Sorter &rarr; Extractor &rarr; CIO &rarr; Translator**.
