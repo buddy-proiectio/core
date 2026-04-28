@@ -297,6 +297,9 @@ def run_extractor(data_dir: str = None):
 
                             output = "".join(processed_lines).strip()
                             
+                            # Escape markdown numbered lists (only at the start of a line) to prevent automatic formatting
+                            output = re.sub(r"^(\s*)(\d+)\.(\s)", r"\1\2\.\3", output, flags=re.MULTILINE)
+                            
                             # Final emoji removal from LLM output
                             output = re.sub(r"[\U00010000-\U0010ffff]", "", output)
 
