@@ -124,8 +124,6 @@ The pipeline consists of five key modules and an orchestrator, each handling a s
         <string>/path/to/buddy-core/logs/buddy-core-cron.log</string>
         <key>StandardErrorPath</key>
         <string>/path/to/buddy-core/logs/buddy-core-cron.log</string>
+      </dict>
+      </plist>
       ```
-
-    </dict>
-    </plist>
-         ```
