@@ -297,6 +297,9 @@ def run_extractor(data_dir: str = None):
 
                             output = "".join(processed_lines).strip()
                             
+                            # Remove pic.twitter.com links
+                            output = re.sub(r"\s*(https?://)?pic\.twitter\.com/[A-Za-z0-9_/-]+", "", output)
+
                             # Escape markdown numbered lists (only at the start of a line) to prevent automatic formatting
                             output = re.sub(r"^(\s*)(\d+)\.(\s)", r"\1\2\.\3", output, flags=re.MULTILINE)
                             
