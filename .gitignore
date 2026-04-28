@@ -34,6 +34,7 @@ MANIFEST
 # Logs and outputs
 logs/
 data/
+memory/
 
 # OS generated files
 .DS_Store
