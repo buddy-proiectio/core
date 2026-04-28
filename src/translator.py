@@ -252,6 +252,10 @@ def process_line(line: str) -> str:
             "\n" if original_endswith_newline else ""
         )
 
+    # 1.5) Markdown Tables (Do not translate)
+    if stripped_line.startswith("|") and stripped_line.endswith("|") and "|" in stripped_line[1:-1]:
+        return line_content + ("\n" if original_endswith_newline else "")
+
     # 2) Daily Point Indicators (Do not translate Dow Jones, Nasdaq, S&P 500, Bitcoin)
     if stripped_line.startswith("_ "):
         if any(

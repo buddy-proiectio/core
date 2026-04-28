@@ -267,8 +267,36 @@ def run_extractor(data_dir: str = None):
 
                         # Rigid post-processing block
                         if output:
-                            # Replace all newlines with a single space to form a continuous block
-                            output = re.sub(r"\s+", " ", output).strip()
+                            # Instead of squashing all newlines blindly, we selectively squash
+                            # non-table lines, while preserving table lines.
+                            lines = output.split('\n')
+                            processed_lines = []
+                            in_table = False
+
+                            for line in lines:
+                                stripped = line.strip()
+                                if not stripped:
+                                    continue
+                                is_table_line = stripped.startswith('|') and stripped.endswith('|')
+                                
+                                if is_table_line:
+                                    if not in_table:
+                                        processed_lines.append("\n" + stripped)
+                                        in_table = True
+                                    else:
+                                        processed_lines.append("\n" + stripped)
+                                else:
+                                    if in_table:
+                                        processed_lines.append("\n\n" + stripped)
+                                        in_table = False
+                                    else:
+                                        if processed_lines and not processed_lines[-1].endswith("\n"):
+                                            processed_lines[-1] += " " + stripped
+                                        else:
+                                            processed_lines.append(stripped)
+
+                            output = "".join(processed_lines).strip()
+                            
                             # Final emoji removal from LLM output
                             output = re.sub(r"[\U00010000-\U0010ffff]", "", output)
 
