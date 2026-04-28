@@ -266,8 +266,7 @@ def run_extractor(data_dir: str = None):
                         output = data.get("message", {}).get("content", "").strip()
 
                         # Rigid post-processing block
-                        if output and "NO_EXTRACTION" not in output.upper():
-                            logger.info(f"Task {idx:02d} [{category}] Extracted!")
+                        if output:
                             # Replace all newlines with a single space to form a continuous block
                             output = re.sub(r"\s+", " ", output).strip()
                             # Final emoji removal from LLM output
@@ -279,17 +278,32 @@ def run_extractor(data_dir: str = None):
                             clean_title = re.sub(r"<.*?>", "", raw_title).strip()
                             clean_title = re.sub(r"[\U00010000-\U0010ffff]", "", clean_title)
                             article_url = article.get("url", "#")
+                            
+                            upper_output = output.upper()
+                            words = output.split()
+                            letters_count = sum(c.isalpha() for c in output)
+                            digits_count = sum(c.isdigit() for c in output)
 
-                            # Dedup check: If output text is just the title, printing it repeats the title.
-                            if output == clean_title:
+                            # Check for bad extraction
+                            is_bad_extraction = False
+                            if "NO_EXTRACTION" in upper_output or "NO DATA" in upper_output:
+                                is_bad_extraction = True
+                            elif len(words) < 10:
+                                is_bad_extraction = True
+                            elif digits_count > letters_count * 0.5:
+                                is_bad_extraction = True
+
+                            if is_bad_extraction or output == clean_title:
+                                logger.info(f"Task {idx:02d} [{category}] Bad Extraction or No KPIs. Fallback to Title-only.")
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
+                                logger.info(f"Task {idx:02d} [{category}] Extracted!")
                                 final_text = f"[{clean_title}]({article_url})\n{output}"
 
                             category_outputs[category].append(final_text)
                         else:
                             logger.info(
-                                f"Task {idx:02d} [{category}] Skipped (No KPIs)"
+                                f"Task {idx:02d} [{category}] Skipped (Empty output)"
                             )
 
                     except Exception as e:
