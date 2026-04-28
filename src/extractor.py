@@ -269,7 +269,7 @@ def run_extractor(data_dir: str = None):
                         if output:
                             # Instead of squashing all newlines blindly, we selectively squash
                             # non-table lines, while preserving table lines.
-                            lines = output.split('\n')
+                            lines = output.split("\n")
                             processed_lines = []
                             in_table = False
 
@@ -277,8 +277,10 @@ def run_extractor(data_dir: str = None):
                                 stripped = line.strip()
                                 if not stripped:
                                     continue
-                                is_table_line = stripped.startswith('|') and stripped.endswith('|')
-                                
+                                is_table_line = stripped.startswith(
+                                    "|"
+                                ) and stripped.endswith("|")
+
                                 if is_table_line:
                                     if not in_table:
                                         processed_lines.append("\n" + stripped)
@@ -290,19 +292,30 @@ def run_extractor(data_dir: str = None):
                                         processed_lines.append("\n\n" + stripped)
                                         in_table = False
                                     else:
-                                        if processed_lines and not processed_lines[-1].endswith("\n"):
+                                        if processed_lines and not processed_lines[
+                                            -1
+                                        ].endswith("\n"):
                                             processed_lines[-1] += " " + stripped
                                         else:
                                             processed_lines.append(stripped)
 
                             output = "".join(processed_lines).strip()
-                            
+
                             # Remove pic.twitter.com links
-                            output = re.sub(r"\s*(https?://)?pic\.twitter\.com/[A-Za-z0-9_/-]+", "", output)
+                            output = re.sub(
+                                r"\s*(https?://)?pic\.twitter\.com/[A-Za-z0-9_/-]+",
+                                "",
+                                output,
+                            )
 
                             # Escape markdown numbered lists (only at the start of a line) to prevent automatic formatting
-                            output = re.sub(r"^(\s*)(\d+)\.(\s)", r"\1\2\.\3", output, flags=re.MULTILINE)
-                            
+                            output = re.sub(
+                                r"^(\s*)(\d+)\.(\s)",
+                                r"\1\2\.\3",
+                                output,
+                                flags=re.MULTILINE,
+                            )
+
                             # Final emoji removal from LLM output
                             output = re.sub(r"[\U00010000-\U0010ffff]", "", output)
 
@@ -310,9 +323,11 @@ def run_extractor(data_dir: str = None):
                             raw_title = article.get("title", f"Article {idx}")
                             # Strip HTML tags and emojis
                             clean_title = re.sub(r"<.*?>", "", raw_title).strip()
-                            clean_title = re.sub(r"[\U00010000-\U0010ffff]", "", clean_title)
+                            clean_title = re.sub(
+                                r"[\U00010000-\U0010ffff]", "", clean_title
+                            )
                             article_url = article.get("url", "#")
-                            
+
                             upper_output = output.upper()
                             words = output.split()
                             letters_count = sum(c.isalpha() for c in output)
@@ -320,7 +335,10 @@ def run_extractor(data_dir: str = None):
 
                             # Check for bad extraction
                             is_bad_extraction = False
-                            if "NO_EXTRACTION" in upper_output or "NO DATA" in upper_output:
+                            if (
+                                "NO_EXTRACTION" in upper_output
+                                or "NO DATA" in upper_output
+                            ):
                                 is_bad_extraction = True
                             elif len(words) < 10:
                                 is_bad_extraction = True
@@ -328,7 +346,9 @@ def run_extractor(data_dir: str = None):
                                 is_bad_extraction = True
 
                             if is_bad_extraction or output == clean_title:
-                                logger.info(f"Task {idx:02d} [{category}] Bad Extraction or No KPIs. Fallback to Title-only.")
+                                logger.info(
+                                    f"Task {idx:02d} [{category}] Bad Extraction or No KPIs. Fallback to Title-only."
+                                )
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
                                 logger.info(f"Task {idx:02d} [{category}] Extracted!")
