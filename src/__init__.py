@@ -44,7 +44,7 @@ def pull_data_from_cloud():
     """
     Pull sieve's data from oracle cloud storage
     """
-    today = datetime.now().strftime("%Y%m%d")
+    today = datetime.now(pytz.timezone("America/New_York")).strftime("%Y%m%d")
 
     """
     Change the following variables if you are not using the same environment as mine

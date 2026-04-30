@@ -12,6 +12,7 @@ import os
 import sys
 import glob
 from datetime import datetime
+import pytz
 
 # Eagerly import apscheduler and concurrent.futures to prevent lazy loading
 # during script shutdown, which causes "can't register atexit after shutdown"
@@ -200,7 +201,8 @@ def generate_cio_commentary(
 def run_cio():
     try:
         # Identify today's date for file paths
-        today_str = datetime.now().strftime("%Y%m%d")
+        us_tz = pytz.timezone("America/New_York")
+        today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
         logger.info(f"Starting CIO Pipeline for {today_str}")
 
