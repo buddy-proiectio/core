@@ -393,8 +393,11 @@ def process_line(line: str) -> str:
             title = match.group(1)
             url = match.group(2)
 
-            # Send ONLY the title to translate_text
-            translated_title = translate_text(title)
+            # Send ONLY the title to translate_text (skip for SEC filings)
+            if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", title, re.IGNORECASE):
+                translated_title = title
+            else:
+                translated_title = translate_text(title)
 
             # Reassemble strictly using Python
             parts.append(f"[{translated_title}]({url})\\")

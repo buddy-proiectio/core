@@ -12,6 +12,7 @@ import json
 import logging
 import warnings
 import re
+import pytz
 
 # Suppress HuggingFace and Sentence-Transformers warnings/logs completely
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -70,8 +71,9 @@ def run_extractor(data_dir: str = None):
         )
         os.makedirs(data_dir, exist_ok=True)
 
-    # 1. Get today's date in YYYYMMDD format (Local Time)
-    today_str = datetime.now().strftime("%Y%m%d")
+    # 1. Get today's date in YYYYMMDD format (US Eastern Time)
+    us_tz = pytz.timezone("America/New_York")
+    today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
     # 2. Categories are directly driven by the configurations in prompts.py
     categories = list(AGENT_CONFIGS.keys())
@@ -240,6 +242,18 @@ def run_extractor(data_dir: str = None):
                 for idx, task_data in enumerate(active_tasks, 1):
                     category, sys_prompt, user_prompt, article = task_data
 
+                    # SEC Filing Bypass: Skip LLM completely and just output the formatted title
+                    if article.get("extraction_status") == "sec_filing":
+                        raw_title = article.get("title", f"Article {idx}")
+                        clean_title = re.sub(r"<.*?>", "", raw_title).strip()
+                        clean_title = re.sub(r"[\U00010000-\U0010ffff]", "", clean_title)
+                        article_url = article.get("url", "#")
+                        
+                        logger.info(f"Task {idx:02d}/{total_tasks} [{category}] SEC Filing detected. Bypassing LLM.")
+                        final_text = f"[{clean_title}]({article_url})"
+                        category_outputs[category].append(final_text)
+                        continue
+
                     payload = {
                         "model": "llama3.1",
                         "messages": [
@@ -329,25 +343,33 @@ def run_extractor(data_dir: str = None):
                             article_url = article.get("url", "#")
 
                             upper_output = output.upper()
+                            first_line_upper = upper_output.split("\n")[0].strip()
                             words = output.split()
                             letters_count = sum(c.isalpha() for c in output)
                             digits_count = sum(c.isdigit() for c in output)
 
-                            # Check for bad extraction
-                            is_bad_extraction = False
+                            # 1. Skip completely if it's a garbage article (NO_EXTRACTION) or mostly numbers
                             if (
-                                "NO_EXTRACTION" in upper_output
-                                or "NO DATA" in upper_output
+                                "NO_EXTRACTION" in first_line_upper
+                                or "NO DATA" in first_line_upper
                             ):
-                                is_bad_extraction = True
-                            elif len(words) < 10:
-                                is_bad_extraction = True
-                            elif digits_count > letters_count * 0.5:
-                                is_bad_extraction = True
-
-                            if is_bad_extraction or output == clean_title:
                                 logger.info(
-                                    f"Task {idx:02d} [{category}] Bad Extraction or No KPIs. Fallback to Title-only."
+                                    f"Task {idx:02d} [{category}] NO_EXTRACTION detected on first line. Skipping article completely."
+                                )
+                                continue
+
+                            if letters_count == 0 or (
+                                digits_count > letters_count * 0.8
+                            ):
+                                logger.info(
+                                    f"Task {idx:02d} [{category}] Extracted mostly numbers. Skipping article completely."
+                                )
+                                continue
+
+                            # 2. Fallback to Title-only if extraction is very short (but not NO_EXTRACTION)
+                            if len(words) < 10 or output == clean_title:
+                                logger.info(
+                                    f"Task {idx:02d} [{category}] Short extraction or matches title. Fallback to Title-only."
                                 )
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
