@@ -231,7 +231,8 @@ def run_extractor(data_dir: str = None):
         output_filename = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
         # Group task outputs by category for structured writing
-        category_outputs = {category: [] for category in categories}
+        category_normal_outputs = {category: [] for category in categories}
+        category_sec_outputs = {category: [] for category in categories}
 
         try:
             url = "http://127.0.0.1:11434/api/chat"
@@ -251,7 +252,7 @@ def run_extractor(data_dir: str = None):
                         
                         logger.info(f"Task {idx:02d}/{total_tasks} [{category}] SEC Filing detected. Bypassing LLM.")
                         final_text = f"[{clean_title}]({article_url})"
-                        category_outputs[category].append(final_text)
+                        category_sec_outputs[category].append(final_text)
                         continue
 
                     payload = {
@@ -376,7 +377,11 @@ def run_extractor(data_dir: str = None):
                                 logger.info(f"Task {idx:02d} [{category}] Extracted!")
                                 final_text = f"[{clean_title}]({article_url})\n{output}"
 
-                            category_outputs[category].append(final_text)
+                            # Handle cases where SEC filings slip into normal extraction
+                            if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", clean_title, re.IGNORECASE):
+                                category_sec_outputs[category].append(final_text)
+                            else:
+                                category_normal_outputs[category].append(final_text)
                         else:
                             logger.info(
                                 f"Task {idx:02d} [{category}] Skipped (Empty output)"
@@ -392,12 +397,23 @@ def run_extractor(data_dir: str = None):
         # Save output to text file with filtering
         with open(output_filename, "w", encoding="utf-8") as out_f:
             cnt = 0
-            for cat, outputs in category_outputs.items():
-                if outputs:
+            for cat in categories:
+                sec_outputs = category_sec_outputs.get(cat, [])
+                normal_outputs = category_normal_outputs.get(cat, [])
+                
+                if sec_outputs or normal_outputs:
                     cnt += 1
                     out_f.write(f"### {cat}\n\n")
-                    for out in outputs:
-                        out_f.write(f"{out}\n\n")
+                    
+                    if sec_outputs:
+                        # Sort SEC filings alphabetically
+                        sec_outputs.sort(key=lambda x: x.upper())
+                        for out in sec_outputs:
+                            out_f.write(f"{out}\n\n")
+                            
+                    if normal_outputs:
+                        for out in normal_outputs:
+                            out_f.write(f"{out}\n\n")
 
         if cnt == 0:
             logger.info(
