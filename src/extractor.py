@@ -391,10 +391,32 @@ def run_extractor(data_dir: str = None):
                                 )
                                 continue
 
-                            # 2. Fallback to Title-only if extraction is very short (but not NO_EXTRACTION)
-                            if len(words) < 10 or output == clean_title:
+                            # 2. Heuristic for "contextless numbers" (e.g., "$10.6 billion $2.65 38%")
+                            # If a high percentage of tokens are numbers and there's no structural punctuation, it's a data dump without context.
+                            number_tokens = sum(
+                                1 for w in words if any(c.isdigit() for c in w)
+                            )
+                            number_ratio = number_tokens / len(words) if words else 0
+                            has_punctuation = bool(
+                                re.search(r"[,:;?!|]|\.\s|\.$", output)
+                            )
+                            is_contextless = (
+                                number_ratio >= 0.30 and not has_punctuation
+                            )
+
+                            # 3. Fallback to Title-only if extraction is very short, matches title, or is contextless
+                            if (
+                                len(words) < 10
+                                or output == clean_title
+                                or is_contextless
+                            ):
+                                reason = (
+                                    "Short extraction or matches title"
+                                    if not is_contextless
+                                    else "Extracted contextless amounts"
+                                )
                                 logger.info(
-                                    f"Task {idx:02d} [{category}] Short extraction or matches title. Fallback to Title-only."
+                                    f"Task {idx:02d} [{category}] {reason}. Fallback to Title-only."
                                 )
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
