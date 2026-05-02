@@ -247,10 +247,14 @@ def run_extractor(data_dir: str = None):
                     if article.get("extraction_status") == "sec_filing":
                         raw_title = article.get("title", f"Article {idx}")
                         clean_title = re.sub(r"<.*?>", "", raw_title).strip()
-                        clean_title = re.sub(r"[\U00010000-\U0010ffff]", "", clean_title)
+                        clean_title = re.sub(
+                            r"[\U00010000-\U0010ffff]", "", clean_title
+                        )
                         article_url = article.get("url", "#")
-                        
-                        logger.info(f"Task {idx:02d}/{total_tasks} [{category}] SEC Filing detected. Bypassing LLM.")
+
+                        logger.info(
+                            f"Task {idx:02d}/{total_tasks} [{category}] SEC Filing detected. Bypassing LLM."
+                        )
                         final_text = f"[{clean_title}]({article_url})"
                         category_sec_outputs[category].append(final_text)
                         continue
@@ -287,6 +291,7 @@ def run_extractor(data_dir: str = None):
                             lines = output.split("\n")
                             processed_lines = []
                             in_table = False
+                            table_row_count = 0
 
                             for line in lines:
                                 stripped = line.strip()
@@ -298,14 +303,33 @@ def run_extractor(data_dir: str = None):
 
                                 if is_table_line:
                                     if not in_table:
-                                        processed_lines.append("\n" + stripped)
+                                        processed_lines.append("\n\n" + stripped)
                                         in_table = True
+                                        table_row_count = 1
                                     else:
+                                        table_row_count += 1
+                                        if table_row_count == 2:
+                                            is_separator = all(
+                                                c in "|-: \t" for c in stripped
+                                            )
+                                            if not is_separator:
+                                                prev_line = processed_lines[-1].strip()
+                                                col_count = prev_line.count("|") - 1
+                                                if col_count > 0:
+                                                    separator = (
+                                                        "|"
+                                                        + "|".join(["---"] * col_count)
+                                                        + "|"
+                                                    )
+                                                    processed_lines.append(
+                                                        "\n" + separator
+                                                    )
                                         processed_lines.append("\n" + stripped)
                                 else:
                                     if in_table:
                                         processed_lines.append("\n\n" + stripped)
                                         in_table = False
+                                        table_row_count = 0
                                     else:
                                         if processed_lines and not processed_lines[
                                             -1
@@ -378,7 +402,11 @@ def run_extractor(data_dir: str = None):
                                 final_text = f"[{clean_title}]({article_url})\n{output}"
 
                             # Handle cases where SEC filings slip into normal extraction
-                            if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", clean_title, re.IGNORECASE):
+                            if re.search(
+                                r"\b(8-K|10-K|10-Q|SEC Filing)\b",
+                                clean_title,
+                                re.IGNORECASE,
+                            ):
                                 category_sec_outputs[category].append(final_text)
                             else:
                                 category_normal_outputs[category].append(final_text)
@@ -400,17 +428,17 @@ def run_extractor(data_dir: str = None):
             for cat in categories:
                 sec_outputs = category_sec_outputs.get(cat, [])
                 normal_outputs = category_normal_outputs.get(cat, [])
-                
+
                 if sec_outputs or normal_outputs:
                     cnt += 1
                     out_f.write(f"### {cat}\n\n")
-                    
+
                     if sec_outputs:
                         # Sort SEC filings alphabetically
                         sec_outputs.sort(key=lambda x: x.upper())
                         for out in sec_outputs:
                             out_f.write(f"{out}\n\n")
-                            
+
                     if normal_outputs:
                         for out in normal_outputs:
                             out_f.write(f"{out}\n\n")
