@@ -446,22 +446,52 @@ def run_translator():
     output_filename = f"alpha_signal_{date_part}.md"
     output_file = os.path.join(data_dir, output_filename)
 
+    english_output_filename = f"alpha_signal_{date_part}_en.md"
+    english_output_file = os.path.join(data_dir, english_output_filename)
+
     logger.info(f"Starting translation process...")
     logger.info(f"Input: {input_file}")
     logger.info(f"Output: {output_file}")
+    logger.info(f"English Output: {english_output_file}")
 
     with open(input_file, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
     translated_lines = []
+    english_lines = []
 
     for i, line in enumerate(lines):
         try:
             translated_line = process_line(line)
+            english_line = line
+            stripped_original = line.lstrip()
+
+            # Format the Report Header for the English version
+            m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped_original)
+            if m_report:
+                year, month, day = m_report.groups()
+                months_en = [
+                    "Jan",
+                    "Feb",
+                    "Mar",
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep",
+                    "Oct",
+                    "Nov",
+                    "Dec",
+                ]
+                month_name = months_en[int(month) - 1]
+                formatted_en_header = f"## {day} {month_name} {year} Alpha Signal"
+                english_line = formatted_en_header + (
+                    "\n" if line.endswith("\n") else ""
+                )
 
             # Post-process to smartly add a markdown line break ('\')
             # if this line is part of a list/schedule and the NEXT line is not empty.
-            stripped_original = line.lstrip()
             date_pattern = r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)\s*\("
 
             is_target_line = stripped_original.startswith(
@@ -474,6 +504,10 @@ def run_translator():
                         translated_line = translated_line[:-1] + "\\\n"
                     else:
                         translated_line += "\\"
+                    if english_line.endswith("\n"):
+                        english_line = english_line[:-1] + "\\\n"
+                    else:
+                        english_line += "\\"
 
         except KeyboardInterrupt:
             logger.warning("Translation process interrupted. Exiting gracefully.")
@@ -483,11 +517,18 @@ def run_translator():
                 f"Failed to translate line {i+1}: '{line.strip()}'. Keeping original. Error: {e}"
             )
             translated_line = line
+            english_line = line
 
         translated_lines.append(translated_line)
+        english_lines.append(english_line)
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.writelines(translated_lines)
 
-    logger.info(f"Translation complete. Successfully saved to {output_file}")
+    with open(english_output_file, "w", encoding="utf-8") as f:
+        f.writelines(english_lines)
+
+    logger.info(
+        f"Translation complete. Successfully saved to {output_file} and {english_output_file}"
+    )
     return True

@@ -357,6 +357,10 @@ def run_extractor(data_dir: str = None):
 
                             # Final emoji removal from LLM output
                             output = re.sub(r"[\U00010000-\U0010ffff]", "", output)
+                            # Remove miscellaneous symbols like ⚠️
+                            output = re.sub(
+                                r"[\u2600-\u27BF\u2300-\u23FF\u2B50\u2B55]", "", output
+                            )
 
                             # Format the result with python
                             raw_title = article.get("title", f"Article {idx}")
@@ -421,7 +425,14 @@ def run_extractor(data_dir: str = None):
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
                                 logger.info(f"Task {idx:02d} [{category}] Extracted!")
-                                final_text = f"[{clean_title}]({article_url})\n{output}"
+                                if output.startswith("|"):
+                                    final_text = (
+                                        f"[{clean_title}]({article_url})\n\n{output}"
+                                    )
+                                else:
+                                    final_text = (
+                                        f"[{clean_title}]({article_url})\n{output}"
+                                    )
 
                             # Handle cases where SEC filings slip into normal extraction
                             if re.search(
