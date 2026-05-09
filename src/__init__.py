@@ -160,6 +160,10 @@ def run_all():
             )
             _cleanup_data_files(data_dir)
             logger.info("Cleanup complete.")
+
+            # Automatically push to GitHub
+            push_to_github(data_dir)
+
             logger.info("Successfully completed Buddy Core Pipeline!")
         else:
             logger.warning("Translator did not return success. Skipping cleanup.")
@@ -172,6 +176,41 @@ def run_all():
         if os.path.exists(lock_file):
             os.remove(lock_file)
             logger.info("Lock file removed.")
+
+
+def push_to_github(data_dir: str):
+    """
+    Adds, commits, and pushes the final alpha signal reports to GitHub.
+    """
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # 1. Git Add (Specific to the alpha signal files)
+        # Using shell=True to allow glob expansion
+        subprocess.run(
+            "git add data/alpha_signal_*.md",
+            shell=True,
+            cwd=project_root,
+            check=True,
+        )
+
+        # 2. Git Commit
+        commit_message = f"docs: add daily alpha signal reports: {datetime.now().strftime('%Y-%m-%d')}"
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", commit_message],
+            cwd=project_root,
+            check=True,
+        )
+
+        # 3. Git Push
+        subprocess.run(["git", "push", "origin", "main"], cwd=project_root, check=True)
+
+        logger.info("Successfully pushed final reports to GitHub.")
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git operation failed: {e}")
+    except Exception as e:
+        logger.error(f"An error occurred during git push: {e}")
 
 
 def _cleanup_data_files(data_dir: str):
