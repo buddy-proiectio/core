@@ -288,11 +288,11 @@ def process_line(line: str) -> str:
             "\n" if original_endswith_newline else ""
         )
 
-    # 4) Dates: Weekly Schedule (e.g., Feb 24 (Tue) -> 2월 24일 (화))
-    date_pattern = r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)\s*\((Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\)$"
+    # 4) Dates: Weekly Schedule (e.g., 24 Feb (Tue) -> 2월 24일 (화))
+    date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\((Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\)$"
     m_date = re.match(date_pattern, stripped_line)
     if m_date:
-        month_str, day_str, dow_str = m_date.groups()
+        day_str, month_str, dow_str = m_date.groups()
         months_kr = {
             "Jan": "1월",
             "Feb": "2월",
@@ -492,7 +492,7 @@ def run_translator():
 
             # Post-process to smartly add a markdown line break ('\')
             # if this line is part of a list/schedule and the NEXT line is not empty.
-            date_pattern = r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)\s*\("
+            date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\("
 
             is_target_line = stripped_original.startswith(
                 ("_ ", "* ", "- ", "[")
