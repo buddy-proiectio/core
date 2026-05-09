@@ -495,7 +495,7 @@ def run_translator():
             date_pattern = r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d+)\s*\("
 
             is_target_line = stripped_original.startswith(
-                ("_ ", "* ", "★ ", "[Macro]", "[Earnings]")
+                ("_ ", "* ", "- ", "[")
             ) or re.match(date_pattern, stripped_original)
 
             if is_target_line:
