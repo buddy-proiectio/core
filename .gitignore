@@ -33,7 +33,7 @@ MANIFEST
 
 # Logs and outputs
 logs/
-data/
+data/.tmp*
 memory/
 
 # OS generated files
