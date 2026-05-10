@@ -50,8 +50,8 @@ jobs:
               --method POST \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "/repos/$REPO_OWNER/buddy-publish-script/dispatches" \
+              "/repos/$REPO_OWNER/buddy-publisher/dispatches" \
               --input - <<< "$PAYLOAD"
               
-            echo "Webhook successfully sent for $file to $REPO_OWNER/buddy-publish-script"
+            echo "Webhook successfully sent for $file to $REPO_OWNER/buddy-publisher"
           done
