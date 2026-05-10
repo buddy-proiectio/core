@@ -1,0 +1,54 @@
+name: Trigger Publishing Workflows
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "data/*.md"
+
+jobs:
+  dispatch-webhooks:
+    name: Dispatch Webhooks for All Changed Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Find changes and trigger webhooks
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -e
+
+          # Get markdown file added or modified in the data/ directory in the latest commit
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r HEAD -- data/ | grep '\.md$' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No markdown files changed."
+            exit 0
+          fi
+
+          # Convert markdown files to safely handle spaces and special characters
+          mapfile -t FILES_ARRAY <<< "$CHANGED_FILES"
+
+          # Send webhook for each markdown file
+          for file in "${FILES_ARRAY[@]}"; do
+            echo "Processing file: $file"
+            
+            # Create payload for each file
+            PAYLOAD=$(jq -n --arg fp "$file" '{event_type: "publish-article", client_payload: {file_path: $fp}}')
+            
+            # Send webhook
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/$REPO_OWNER/buddy-publish-script/dispatches" \
+              --input - <<< "$PAYLOAD"
+              
+            echo "Webhook successfully sent for $file to $REPO_OWNER/buddy-publish-script"
+          done
