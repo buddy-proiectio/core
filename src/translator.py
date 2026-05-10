@@ -400,7 +400,7 @@ def process_line(line: str) -> str:
                 translated_title = translate_text(title)
 
             # Reassemble strictly using Python
-            parts.append(f"[{translated_title}]({url})\\")
+            parts.append(f"[{translated_title}]({url})<br />")
 
             last_idx = match.end()
 
@@ -490,26 +490,30 @@ def run_translator():
                     "\n" if line.endswith("\n") else ""
                 )
 
-            # Post-process to smartly add a markdown line break ('\')
+            # Post-process to smartly add a markdown line break ('<br />')
             # if this line is part of a list/schedule and the NEXT line is not empty.
             date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\("
 
             is_target_line = stripped_original.startswith(
-                ("_ ", "* ", "- ", "[")
+                ("_ ", "* ", "- ", "[", "★ ")
             ) or re.match(date_pattern, stripped_original)
 
             if is_target_line:
                 if i + 1 < len(lines) and lines[i + 1].strip():
-                    if not translated_line.endswith("\\\n") and not translated_line.endswith("\\"):
+                    if not translated_line.endswith(
+                        "<br />\n"
+                    ) and not translated_line.endswith("<br />"):
                         if translated_line.endswith("\n"):
-                            translated_line = translated_line[:-1] + "\\\n"
+                            translated_line = translated_line[:-1] + "<br />\n"
                         else:
-                            translated_line += "\\"
-                    if not english_line.endswith("\\\n") and not english_line.endswith("\\"):
+                            translated_line += "<br />"
+                    if not english_line.endswith(
+                        "<br />\n"
+                    ) and not english_line.endswith("<br />"):
                         if english_line.endswith("\n"):
-                            english_line = english_line[:-1] + "\\\n"
+                            english_line = english_line[:-1] + "<br />\n"
                         else:
-                            english_line += "\\"
+                            english_line += "<br />"
 
         except KeyboardInterrupt:
             logger.warning("Translation process interrupted. Exiting gracefully.")
