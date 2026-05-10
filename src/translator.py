@@ -500,14 +500,16 @@ def run_translator():
 
             if is_target_line:
                 if i + 1 < len(lines) and lines[i + 1].strip():
-                    if translated_line.endswith("\n"):
-                        translated_line = translated_line[:-1] + "\\\n"
-                    else:
-                        translated_line += "\\"
-                    if english_line.endswith("\n"):
-                        english_line = english_line[:-1] + "\\\n"
-                    else:
-                        english_line += "\\"
+                    if not translated_line.endswith("\\\n") and not translated_line.endswith("\\"):
+                        if translated_line.endswith("\n"):
+                            translated_line = translated_line[:-1] + "\\\n"
+                        else:
+                            translated_line += "\\"
+                    if not english_line.endswith("\\\n") and not english_line.endswith("\\"):
+                        if english_line.endswith("\n"):
+                            english_line = english_line[:-1] + "\\\n"
+                        else:
+                            english_line += "\\"
 
         except KeyboardInterrupt:
             logger.warning("Translation process interrupted. Exiting gracefully.")
