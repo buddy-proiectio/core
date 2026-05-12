@@ -187,6 +187,8 @@ def translate_text(text: str) -> str:
 
             try:
                 translated = google_translator.translate(chunk)
+                if translated is None:
+                    translated = chunk
             except Exception as e:
                 # If a large unpunctuated block fails, split into smaller manageable pieces
                 logger.warning(
@@ -237,6 +239,7 @@ def process_line(line: str) -> str:
     # 1) Exact matches (Headers)
     exact_mappings = {
         "### Daily Point": "### Daily Point",
+        "**Topline Signals**": "**Topline Signals**",
         "### Weekly Schedule": "### 주간 일정",
         "### General": "### 경제 일반",
         "### Bitcoin": "### 비트코인",
@@ -527,6 +530,35 @@ def run_translator():
 
         translated_lines.append(translated_line)
         english_lines.append(english_line)
+
+    # Post-process: Remove "---" below "Topline Signals" in "Daily Point"
+    def remove_topline_separator(lines_list):
+        processed = []
+        in_daily_point = False
+        found_topline = False
+        for line in lines_list:
+            stripped = line.strip()
+            # Section detection
+            if "### Daily Point" in line:
+                in_daily_point = True
+                found_topline = False
+            elif in_daily_point and stripped.startswith("### "):
+                in_daily_point = False
+                found_topline = False
+
+            if in_daily_point:
+                # Check for Topline Signals (English or Korean translations)
+                if "**Topline Signals**" in line:
+                    found_topline = True
+
+                # If we found topline and this line is exactly "---", skip it
+                if found_topline and stripped == "---":
+                    continue
+            processed.append(line)
+        return processed
+
+    translated_lines = remove_topline_separator(translated_lines)
+    english_lines = remove_topline_separator(english_lines)
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.writelines(translated_lines)
