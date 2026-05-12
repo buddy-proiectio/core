@@ -1,4 +1,4 @@
-name: Trigger Publishing Workflows
+name: Trigger Substack Publishing
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -8,11 +8,11 @@ on:
     branches:
       - main
     paths:
-      - "data/*.md"
+      - "data/*_en.md"
 
 jobs:
-  dispatch-webhooks:
-    name: Dispatch Webhooks for All Changed Files
+  dispatch-substack:
+    name: Dispatch Substack Publishing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -20,7 +20,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Find changes and trigger webhooks
+      - name: Find changes and trigger Substack
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
@@ -28,10 +28,11 @@ jobs:
           set -e
 
           # Get markdown file added or modified in the data/ directory in the latest commit
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r HEAD -- data/ | grep '\.md$' || true)
+          # Specifically looking for *_en.md files
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r HEAD -- data/ | grep '_en\.md$' || true)
 
           if [ -z "$CHANGED_FILES" ]; then
-            echo "No markdown files changed."
+            echo "No Substack (*_en.md) files changed."
             exit 0
           fi
 
@@ -43,9 +44,9 @@ jobs:
             echo "Processing file: $file"
             
             # Create payload for each file
-            PAYLOAD=$(jq -n --arg fp "$file" '{event_type: "publish-article", client_payload: {file_path: $fp}}')
+            PAYLOAD=$(jq -n --arg fp "$file" '{event_type: "publish-substack", client_payload: {file_path: $fp}}')
             
-            # Send webhook
+            # Send webhook to buddy-publisher
             gh api \
               --method POST \
               -H "Accept: application/vnd.github+json" \
@@ -53,5 +54,5 @@ jobs:
               "/repos/$REPO_OWNER/buddy-publisher/dispatches" \
               --input - <<< "$PAYLOAD"
               
-            echo "Webhook successfully sent for $file to $REPO_OWNER/buddy-publisher"
+            echo "Webhook successfully sent for $file to $REPO_OWNER/buddy-publisher (event: publish-substack)"
           done
