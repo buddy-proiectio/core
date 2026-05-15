@@ -24,7 +24,7 @@ logger = setup_logger(LOG_FILE, __name__)
 # Suppress noisy INFO logs from external libraries
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 
 def chunk_text(text: str, limit: int = 4000) -> list[str]:
@@ -172,51 +172,100 @@ def translate_text(text: str) -> str:
     if not text.strip():
         return text
 
-    chunks = chunk_text(text, limit=4000)
+    def is_valid(t):
+        return t and "No translation was found" not in t
+
+    # Reduce default limit to be safer with Google Translate free tier
+    chunks = chunk_text(text, limit=2000)
     translated_chunks = []
 
     try:
-        time.sleep(0.1)
         google_translator = GoogleTranslator(source="en", target="ko")
+        mymemory_translator = MyMemoryTranslator(source="en", target="ko")
+
         for i, chunk in enumerate(chunks):
             if not chunk.strip():
                 translated_chunks.append(chunk)
                 continue
-            if i > 0:
-                time.sleep(0.1)
 
+            # Base delay to prevent hitting rate limits
+            if i > 0:
+                time.sleep(0.6)
+
+            translated = None
+            success = False
+
+            # 1. Try primary chunk translation with Google
             try:
                 translated = google_translator.translate(chunk)
-                if translated is None:
-                    translated = chunk
+                if is_valid(translated):
+                    success = True
             except Exception as e:
-                # If a large unpunctuated block fails, split into smaller manageable pieces
+                logger.warning(f"Google Translation failed: {e}")
+
+            # 2. If Google failed, try MyMemory as fallback for the whole chunk
+            if not success:
+                logger.info(f"Retrying whole chunk with MyMemory...")
+                try:
+                    time.sleep(1)
+                    translated = mymemory_translator.translate(chunk)
+                    if is_valid(translated):
+                        success = True
+                except Exception as e:
+                    logger.warning(f"MyMemory Translation failed: {e}")
+
+            # 3. If both failed, try sub-chunking
+            if not success:
                 logger.warning(
-                    f"Google Translator chunk failed: {e}. Retrying with smaller chunks..."
+                    f"Chunk failed for both primary and fallback. Retrying with smaller chunks..."
                 )
-                sub_chunks = chunk_text(chunk, limit=200)
+                sub_chunks = chunk_text(chunk, limit=400)
                 sub_translated = []
                 for sc in sub_chunks:
                     if not sc.strip():
                         sub_translated.append(sc)
                         continue
-                    time.sleep(0.1)
+
+                    time.sleep(0.5)
+                    sc_translated = None
+                    # Try Google for sub-chunk
                     try:
-                        sub_translated.append(google_translator.translate(sc))
-                    except Exception as inner_e:
+                        res = google_translator.translate(sc)
+                        if is_valid(res):
+                            sc_translated = res
+                    except Exception:
+                        pass
+
+                    # Try MyMemory for sub-chunk if Google failed
+                    if not sc_translated:
+                        try:
+                            res = mymemory_translator.translate(sc)
+                            if is_valid(res):
+                                sc_translated = res
+                        except Exception:
+                            pass
+
+                    if sc_translated:
+                        sub_translated.append(sc_translated)
+                    else:
                         logger.warning(
-                            f"Sub-chunk translation failed: {inner_e}. Keeping original."
+                            f"Sub-chunk translation failed completely. Keeping original."
                         )
                         sub_translated.append(sc)
-                translated = " ".join(sub_translated)
 
-            translated_chunks.append(translated)
+                translated = " ".join([str(s) for s in sub_translated if s is not None])
+                translated_chunks.append(translated)
+            else:
+                translated_chunks.append(translated)
 
+        # Final safety check before join
+        translated_chunks = [str(c) for c in translated_chunks if c is not None]
         final_translated = "".join(translated_chunks)
         return make_polite(final_translated)
     except Exception as e:
         logger.error(f"Google translation failed: {e}")
-        raise e
+        # Instead of raising, return original text as a last resort to keep the process running
+        return text
 
 
 def process_line(line: str) -> str:
