@@ -60,7 +60,7 @@ Below is the data for today's market:
 {past_memory_text}
 </PAST_MEMORY>
 
-Your task is to generate a two-part morning report: "Topline Signals" followed by the "Daily Point" narrative commentary.
+Your task is to generate a two-part report: "Topline Signals" followed by the "Daily Point" narrative commentary.
 
 ---
 PART 1: Topline Signals
@@ -80,7 +80,7 @@ Constraints for Part 2:
 1. Language & Tone: Write strictly in polite, professional English. Maintain the calm, decisive, and deeply insightful tone of a billionaire mentor guiding a protégé. Focus on real-world wealth building, not academic analysis.
 2. Continuity & Synthesis: If <PAST_MEMORY> is provided, review the historical progression of the market and our past analyses. Seamlessly weave insights from past trends with today's <EXTRACTED_FACTS> and <MARKET_INDICATORS>. Use phrases like "Building on our recent observations..." or "As we anticipated earlier this week..." to demonstrate long-term consistent logic.
 3. Exact Structure (Sandwich Method): 
-   - You MUST EXACTLY start your response with "Good morning." followed by a line break.
+   - You MUST EXACTLY start your response with "Good day." followed by a line break.
    - DO NOT output any markdown headers or bullet points. Write in smooth, continuous text paragraphs.
    - The total length must be between 200 and 3000 characters.
 4. Content (The Synthesis - WEAVE THEM TOGETHER):
