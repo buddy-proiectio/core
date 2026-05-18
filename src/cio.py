@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import glob
+import argparse
 from datetime import datetime
 import pytz
 
@@ -33,7 +34,7 @@ logger = setup_logger(LOG_FILE, __name__)
 
 import requests
 
-CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
+FULL_REPORT_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
 You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
 Your expertise lies in ignoring daily market noise and "Connecting the Dots" to find life-changing, asymmetric opportunities in the 2026 structural Mega Trends (e.g., AI infrastructure, crypto sovereign adoption, macro liquidity).
 
@@ -41,7 +42,7 @@ You write in two distinct parts:
 1. TOPLINE SIGNALS: Cold, objective, terminal-style reporting of the 3 most critical KPIs.
 2. DAILY POINT: You do NOT simply list facts; you weave them into a compelling, practical narrative that guides the reader toward real financial independence. You write in highly professional, insightful, and polite narrative that guides the reader toward real financial independence."""
 
-CIO_USER_PROMPT_TEMPLATE = """
+FULL_REPORT_CIO_USER_PROMPT_TEMPLATE = """
 Below is the data for today's market:
 
 <MARKET_INDICATORS>
@@ -94,6 +95,27 @@ Constraints for Part 2:
    - Output ONLY your synthesized English commentary paragraph.
 
 Absolute Restriction: Output ONLY the Topline Signals and the Daily Point narrative. No conversational filler.
+"""
+
+PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor. You are preparing the ultimate 'Pre-market Briefing' right before the US market opens.
+Your objective is to review ALL the provided news facts, aggressively filter out noise, and select exactly the 5 to 12 most critical, "10-star" news items that will move the market today or signal structural mega-trend shifts.
+Do NOT simply pick the first 12 items. Read everything first, evaluate their true impact, and output ONLY the absolute best 5 to 12 items."""
+
+PREMARKET_CIO_USER_PROMPT_TEMPLATE = """
+Below is the ALL extracted news data from the past 24 hours:
+
+<EXTRACTED_FACTS>
+{extracted_facts_text}
+</EXTRACTED_FACTS>
+
+Your task is to generate the "Pre-market News Report".
+
+Constraints:
+1. Strict Selection: Review every single item in <EXTRACTED_FACTS>. You MUST select AT LEAST 5 and NO MORE THAN 12 items that are the most critical. Ignore everything else.
+2. No Duplicates: Do NOT select the same item twice. Ensure every single selected item is unique.
+3. Format: You MUST output the selected items EXACTLY as they were provided in the <EXTRACTED_FACTS>. Do NOT alter the text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions. Just copy and paste the selected items in this exact format.
+4. Order: Order the selected items by importance (highest priority first).
+5. Absolute Restriction: Output ONLY the selected unique items exactly as they appear in the source. Do not output anything else.
 """
 
 
@@ -175,13 +197,17 @@ def format_weekly_schedule(data):
     return "\n".join(lines).strip()
 
 
-def generate_cio_commentary(
-    market_text: str, schedule_text: str, facts_text: str, past_memory_text: str = ""
+def generate_full_report_commentary(
+    market_text: str,
+    schedule_text: str,
+    facts_text: str,
+    past_memory_text: str = "",
 ) -> str:
     """
     Generate narrative commentary using local Ollama.
     """
-    user_prompt = CIO_USER_PROMPT_TEMPLATE.format(
+    sys_prompt = FULL_REPORT_CIO_SYSTEM_PROMPT
+    user_prompt = FULL_REPORT_CIO_USER_PROMPT_TEMPLATE.format(
         market_indicators_text=market_text,
         weekly_schedule_text=schedule_text,
         extracted_facts_text=facts_text,
@@ -194,15 +220,15 @@ def generate_cio_commentary(
     payload = {
         "model": "llama3.1",
         "messages": [
-            {"role": "system", "content": CIO_SYSTEM_PROMPT},
+            {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
         ],
         "stream": False,
         "options": {
+            "num_ctx": 16384,
+            "num_predict": 3000,
             "temperature": 0.4,
             "top_p": 0.9,
-            "num_predict": 3000,
-            "num_ctx": 16384,
         },
     }
 
@@ -216,133 +242,225 @@ def generate_cio_commentary(
         raise e
 
 
-def run_cio():
+def select_premarket_news(facts_text: str) -> str:
+    """
+    Selects the top 5 to 12 most critical news items for the premarket briefing.
+    """
+    sys_prompt = PREMARKET_CIO_SYSTEM_PROMPT
+    user_prompt = PREMARKET_CIO_USER_PROMPT_TEMPLATE.format(
+        extracted_facts_text=facts_text
+    )
+
+    url = "http://localhost:11434/api/chat"
+    payload = {
+        "model": "llama3.1",
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "stream": False,
+        "options": {
+            "num_ctx": 16384,
+            "num_predict": 3000,
+            "temperature": 0.0,
+            "top_p": 0.1,
+        },
+    }
+
+    try:
+        response = requests.post(url, json=payload, timeout=None)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("message", {}).get("content", "").strip()
+    except Exception as e:
+        logger.error(f"Failed to communicate with local Ollama: {e}")
+        raise e
+
+
+def run_full_cio(today_str: str, data_dir: str):
+    news_file = os.path.join(data_dir, f"daily_news_{today_str}.json")
+    output_file = os.path.join(data_dir, f"final_report_{today_str}.txt")
+    facts_file = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
+
+    # Fallback finding latest files if today's don't exist
+    if not os.path.exists(news_file):
+        json_files = sorted(glob.glob(os.path.join(data_dir, "daily_news_*.json")))
+        if json_files:
+            news_file = json_files[-1]
+
+    if not os.path.exists(facts_file):
+        txt_files = sorted(glob.glob(os.path.join(data_dir, "extracted_facts_*.txt")))
+        if txt_files:
+            facts_file = txt_files[-1]
+
+    # 1. Provide input files
+    data = {}
+    if os.path.exists(news_file):
+        logger.info(f"Loading market data from {news_file}")
+        with open(news_file, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON from {news_file}")
+    else:
+        logger.warning(
+            f"{news_file} not found. Proceeding with empty market/schedule data."
+        )
+
+    facts_text = ""
+    if os.path.exists(facts_file):
+        logger.info(f"Loading extracted facts from {facts_file}")
+        with open(facts_file, "r", encoding="utf-8") as f:
+            facts_text = f.read()
+    else:
+        logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
+
+    # Extract past memory for continuity
+    memory_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory"
+    )
+    os.makedirs(memory_dir, exist_ok=True)
+
+    past_memory_text = ""
+    memory_files = sorted(glob.glob(os.path.join(memory_dir, "memory_*.txt")))
+    memory_files = [f for f in memory_files if today_str not in f]
+
+    # Take the last 3 days to avoid exceeding context window
+    recent_memory_files = memory_files[-3:]
+    if recent_memory_files:
+        logger.info(
+            f"Loading past memory from {len(recent_memory_files)} recent files."
+        )
+        for m_file in recent_memory_files:
+            try:
+                with open(m_file, "r", encoding="utf-8") as f:
+                    past_memory_text += (
+                        f"--- Memory from {os.path.basename(m_file)} ---\n"
+                    )
+                    past_memory_text += f.read() + "\n\n"
+            except Exception as e:
+                logger.warning(f"Failed to load memory file {m_file}: {e}")
+
+    # 2. Format Market Map
+    market_text_for_prompt = format_market_map(data, display_only=False)
+    market_text_for_report = format_market_map(data, display_only=True)
+
+    # 3. Format Weekly Schedule
+    schedule_text = format_weekly_schedule(data)
+
+    # 4. Generate AI Commentary
+    logger.info("Generating full report AI commentary from local Ollama...")
+    try:
+        commentary = generate_full_report_commentary(
+            market_text_for_prompt,
+            schedule_text,
+            facts_text,
+            past_memory_text,
+        )
+        logger.info("Successfully generated AI commentary.")
+    except Exception as e:
+        logger.error(f"Failed to generate AI commentary: {e}")
+        commentary = "Error generating commentary."
+
+    # Save today's context into the memory folder (English only, pre-translation)
+    logger.info("Saving today's context to memory...")
+    today_memory = f"Date: {today_str}\n\nMarket Map:\n{market_text_for_report}\n\nCommentary:\n{commentary}\n\nFacts:\n{facts_text}"
+    try:
+        with open(
+            os.path.join(memory_dir, f"memory_{today_str}.txt"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            f.write(today_memory)
+    except Exception as e:
+        logger.warning(f"Failed to save today's memory: {e}")
+
+    # 5. Merge output to target format
+    logger.info("Merging content into final report format...")
+    report = (
+        f"## {today_str}\n\n"
+        "### Daily Point\n"
+        f"{market_text_for_report}\n\n"
+        f"{commentary}\n\n"
+        "### Weekly Schedule\n"
+        f"{schedule_text}\n\n"
+        f"{facts_text}"
+    )
+
+    # 6. Save final compiled string
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(report)
+
+    logger.info(f"Report successfully generated and saved to {output_file}")
+
+
+def run_premarket_cio(today_str: str, data_dir: str):
+    output_file = os.path.join(data_dir, f"premarket_report_{today_str}.txt")
+    facts_file = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
+
+    if not os.path.exists(facts_file):
+        txt_files = sorted(glob.glob(os.path.join(data_dir, "extracted_facts_*.txt")))
+        if txt_files:
+            facts_file = txt_files[-1]
+
+    facts_text = ""
+    if os.path.exists(facts_file):
+        logger.info(f"Loading extracted facts from {facts_file}")
+        with open(facts_file, "r", encoding="utf-8") as f:
+            facts_text = f.read()
+    else:
+        logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
+
+    # 4. Generate AI News Selection
+    logger.info("Selecting premarket news using local Ollama...")
+    try:
+        selected_news = select_premarket_news(facts_text)
+        logger.info("Successfully selected premarket news.")
+    except Exception as e:
+        logger.error(f"Failed to select premarket news: {e}")
+        selected_news = "Error selecting news."
+
+    # 5. Premarket format
+    logger.info("Merging content into premarket report format...")
+    report = f"## {today_str} Premarket\n\n{selected_news}"
+
+    # 6. Save final compiled string
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(report)
+
+    logger.info(f"Premarket report successfully generated and saved to {output_file}")
+
+
+def run_cio(report_type: str = "full"):
     try:
         # Identify today's date for file paths
         us_tz = pytz.timezone("America/New_York")
         today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
-        logger.info(f"Starting CIO Pipeline for {today_str}")
+        logger.info(f"Starting CIO Pipeline for {today_str} (Type: {report_type})")
 
         data_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
         )
         os.makedirs(data_dir, exist_ok=True)
 
-        news_file = os.path.join(data_dir, f"daily_news_{today_str}.json")
-        facts_file = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
-        output_file = os.path.join(data_dir, f"final_report_{today_str}.txt")
-
-        # Fallback finding latest files if today's don't exist
-        if not os.path.exists(news_file):
-            json_files = sorted(glob.glob(os.path.join(data_dir, "daily_news_*.json")))
-            if json_files:
-                news_file = json_files[-1]
-
-        if not os.path.exists(facts_file):
-            txt_files = sorted(
-                glob.glob(os.path.join(data_dir, "extracted_facts_*.txt"))
-            )
-            if txt_files:
-                facts_file = txt_files[-1]
-
-        # 1. Provide input files
-        data = {}
-        if os.path.exists(news_file):
-            logger.info(f"Loading market data from {news_file}")
-            with open(news_file, "r", encoding="utf-8") as f:
-                try:
-                    data = json.load(f)
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse JSON from {news_file}")
+        if report_type == "premarket":
+            run_premarket_cio(today_str, data_dir)
         else:
-            logger.warning(
-                f"{news_file} not found. Proceeding with empty market/schedule data."
-            )
-
-        facts_text = ""
-        if os.path.exists(facts_file):
-            logger.info(f"Loading extracted facts from {facts_file}")
-            with open(facts_file, "r", encoding="utf-8") as f:
-                facts_text = f.read()
-        else:
-            logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
-
-        # Extract past memory for continuity
-        memory_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory"
-        )
-        os.makedirs(memory_dir, exist_ok=True)
-
-        past_memory_text = ""
-        memory_files = sorted(glob.glob(os.path.join(memory_dir, "memory_*.txt")))
-        memory_files = [f for f in memory_files if today_str not in f]
-
-        # Take the last 3 days to avoid exceeding context window
-        recent_memory_files = memory_files[-3:]
-        if recent_memory_files:
-            logger.info(
-                f"Loading past memory from {len(recent_memory_files)} recent files."
-            )
-            for m_file in recent_memory_files:
-                try:
-                    with open(m_file, "r", encoding="utf-8") as f:
-                        past_memory_text += (
-                            f"--- Memory from {os.path.basename(m_file)} ---\n"
-                        )
-                        past_memory_text += f.read() + "\n\n"
-                except Exception as e:
-                    logger.warning(f"Failed to load memory file {m_file}: {e}")
-
-        # 2. Format Market Map
-        market_text_for_prompt = format_market_map(data, display_only=False)
-        market_text_for_report = format_market_map(data, display_only=True)
-
-        # 3. Format Weekly Schedule
-        schedule_text = format_weekly_schedule(data)
-
-        # 4. Generate AI Commentary
-        logger.info("Generating AI commentary from local Ollama...")
-        try:
-            commentary = generate_cio_commentary(
-                market_text_for_prompt, schedule_text, facts_text, past_memory_text
-            )
-            logger.info("Successfully generated AI commentary.")
-        except Exception as e:
-            logger.error(f"Failed to generate AI commentary: {e}")
-            commentary = "Error generating commentary."
-
-        # Save today's context into the memory folder (English only, pre-translation)
-        logger.info("Saving today's context to memory...")
-        today_memory = f"Date: {today_str}\n\nMarket Map:\n{market_text_for_report}\n\nCommentary:\n{commentary}\n\nFacts:\n{facts_text}"
-        try:
-            with open(
-                os.path.join(memory_dir, f"memory_{today_str}.txt"),
-                "w",
-                encoding="utf-8",
-            ) as f:
-                f.write(today_memory)
-        except Exception as e:
-            logger.warning(f"Failed to save today's memory: {e}")
-
-        # 5. Merge output to target format
-        logger.info("Merging content into final report format...")
-        report = (
-            f"## {today_str}\n\n"
-            "### Daily Point\n"
-            f"{market_text_for_report}\n\n"
-            f"{commentary}\n\n"
-            "### Weekly Schedule\n"
-            f"{schedule_text}\n\n"
-            f"{facts_text}"
-        )
-
-        # 6. Save final compiled string
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(report)
-
-        logger.info(f"Report successfully generated and saved to {output_file}")
+            run_full_cio(today_str, data_dir)
 
     except KeyboardInterrupt:
         logger.info("Shutdown signal received. Process terminating.")
         return None
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CIO Report Generator")
+    parser.add_argument(
+        "--type",
+        choices=["full", "premarket"],
+        default="full",
+        help="Type of report to generate",
+    )
+    args = parser.parse_args()
+    run_cio(report_type=args.type)
