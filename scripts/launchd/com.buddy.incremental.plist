@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.buddy.incremental</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/Users/taehoonkwon__/workspaces/buddy-core/.venv/bin/python</string>
+        <string>/Users/taehoonkwon__/workspaces/buddy-core/src/__init__.py</string>
+        <string>--type</string>
+        <string>incremental</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- NY 00:00 (EDT Local Time -> Sydney 14:00) -->
+        <dict>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>2</integer>
+        </dict>
+        <!-- NY 03:00 (EDT Local Time -> Sydney 17:00) -->
+        <dict>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>2</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/incremental_launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/incremental_launchd_error.log</string>
+</dict>
+</plist>

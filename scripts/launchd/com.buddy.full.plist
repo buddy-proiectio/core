@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.buddy.full</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/Users/taehoonkwon__/workspaces/buddy-core/.venv/bin/python</string>
+        <string>/Users/taehoonkwon__/workspaces/buddy-core/src/__init__.py</string>
+        <string>--type</string>
+        <string>full</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <!-- NY 06:00 (EDT Local Time -> Sydney 20:00) -->
+        <key>Hour</key>
+        <integer>20</integer>
+        <key>Minute</key>
+        <integer>2</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/full_launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/full_launchd_error.log</string>
+</dict>
+</plist>
