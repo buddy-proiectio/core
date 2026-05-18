@@ -78,6 +78,27 @@ def run_extractor(data_dir: str = None):
     # 2. Categories are directly driven by the configurations in prompts.py
     categories = list(AGENT_CONFIGS.keys())
 
+    # 2.5 Load incremental state
+    state_filename = os.path.join(data_dir, f"extracted_state_{today_str}.json")
+    state_data = {
+        "extracted_urls": [],
+        "category_normal_outputs": {cat: [] for cat in categories},
+        "category_sec_outputs": {cat: [] for cat in categories},
+    }
+    if os.path.exists(state_filename):
+        try:
+            with open(state_filename, "r", encoding="utf-8") as f:
+                loaded_state = json.load(f)
+                if "extracted_urls" in loaded_state:
+                    state_data = loaded_state
+                logger.info(
+                    f"Loaded incremental state with {len(state_data['extracted_urls'])} previously processed articles."
+                )
+        except Exception as e:
+            logger.error(f"Failed to load state file {state_filename}: {e}")
+
+    extracted_urls_set = set(state_data["extracted_urls"])
+
     # Initialize lightweight embedding model globally for the run
     logger.info(
         "Loading embedding model for semantic deduplication (all-MiniLM-L6-v2)..."
@@ -112,7 +133,9 @@ def run_extractor(data_dir: str = None):
                 url = article.get("url", "")
                 if url and url not in seen_urls:
                     seen_urls.add(url)
-                    url_unique_articles.append(article)
+                    # Skip if already extracted in a previous run today
+                    if url not in extracted_urls_set:
+                        url_unique_articles.append(article)
 
             # Continue ONLY if the file contains unique data
             if not url_unique_articles:
@@ -125,6 +148,7 @@ def run_extractor(data_dir: str = None):
             sem_dupes_count = 0
 
             for article in url_unique_articles:
+                article_url = article.get("url", "")
                 title = article.get("title", "")
                 content = article.get("content", "")
                 # Create a fingerprint: Title + First ~3 sentences
@@ -145,9 +169,14 @@ def run_extractor(data_dir: str = None):
                         sem_dupes_count += 1
                         is_duplicate = True
 
-                if not is_duplicate:
-                    unique_articles.append(article)
-                    accepted_embeddings.append(emb)
+                if is_duplicate:
+                    # Add to state so we don't re-check it in future incremental runs
+                    extracted_urls_set.add(article_url)
+                    state_data["extracted_urls"].append(article_url)
+                    continue
+
+                unique_articles.append(article)
+                accepted_embeddings.append(emb)
 
             if sem_dupes_count > 0:
                 logger.info(
@@ -230,9 +259,9 @@ def run_extractor(data_dir: str = None):
 
         output_filename = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
-        # Group task outputs by category for structured writing
-        category_normal_outputs = {category: [] for category in categories}
-        category_sec_outputs = {category: [] for category in categories}
+        # Use the state loaded earlier
+        category_normal_outputs = state_data["category_normal_outputs"]
+        category_sec_outputs = state_data["category_sec_outputs"]
 
         try:
             url = "http://127.0.0.1:11434/api/chat"
@@ -385,6 +414,8 @@ def run_extractor(data_dir: str = None):
                                 logger.info(
                                     f"Task {idx:02d} [{category}] NO_EXTRACTION detected on first line. Skipping article completely."
                                 )
+                                extracted_urls_set.add(article_url)
+                                state_data["extracted_urls"].append(article_url)
                                 continue
 
                             if letters_count == 0 or (
@@ -393,6 +424,8 @@ def run_extractor(data_dir: str = None):
                                 logger.info(
                                     f"Task {idx:02d} [{category}] Extracted mostly numbers. Skipping article completely."
                                 )
+                                extracted_urls_set.add(article_url)
+                                state_data["extracted_urls"].append(article_url)
                                 continue
 
                             # 2. Heuristic for "contextless numbers" (e.g., "$10.6 billion $2.65 38%")
@@ -443,6 +476,10 @@ def run_extractor(data_dir: str = None):
                                 category_sec_outputs[category].append(final_text)
                             else:
                                 category_normal_outputs[category].append(final_text)
+
+                            # Mark as extracted
+                            extracted_urls_set.add(article_url)
+                            state_data["extracted_urls"].append(article_url)
                         else:
                             logger.info(
                                 f"Task {idx:02d} [{category}] Skipped (Empty output)"
@@ -454,6 +491,13 @@ def run_extractor(data_dir: str = None):
         except KeyboardInterrupt:
             logger.info("Shutdown signal received. Process terminating.")
             logger.info("Saving partially extracted progress before exiting...")
+
+        # Save the updated state
+        try:
+            with open(state_filename, "w", encoding="utf-8") as sf:
+                json.dump(state_data, sf, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save state file: {e}")
 
         # Save output to text file with filtering
         with open(output_filename, "w", encoding="utf-8") as out_f:
