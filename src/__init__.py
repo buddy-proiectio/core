@@ -10,6 +10,7 @@ import sys
 import os
 import subprocess
 import time
+import argparse
 from datetime import datetime
 import glob
 import pytz
@@ -40,7 +41,7 @@ def is_us_trading_day() -> bool:
     return True
 
 
-def pull_data_from_cloud():
+def pull_data_from_cloud(report_type: str = "full"):
     """
     Pull sieve's data from oracle cloud storage
     """
@@ -51,10 +52,16 @@ def pull_data_from_cloud():
     """
     ORACLE_IP_ADDRESS = "159.13.60.28"
     ORACLE_SSH_KEY = "/Users/taehoonkwon__/.ssh/oracle-cloud-ssh.key"
-    remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
 
-    local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
-    local_file = f"{local_dir}/daily_news_{today}.json"
+    if report_type == "premarket":
+        remote_file = f"/home/ubuntu/data/premarket_news_{today}.json"
+        local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
+        local_file = f"{local_dir}/premarket_news_{today}.json"
+    else:
+        # Both 'full' and 'incremental' use the daily_news file
+        remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
+        local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
+        local_file = f"{local_dir}/daily_news_{today}.json"
 
     os.makedirs(local_dir, exist_ok=True)
     scp_command = f"scp -i {ORACLE_SSH_KEY} -o StrictHostKeyChecking=no ubuntu@{ORACLE_IP_ADDRESS}:{remote_file} {local_file}"
@@ -93,7 +100,7 @@ def pull_data_from_cloud():
                 raise
 
 
-def run_all():
+def run_all(report_type: str = "full"):
     """
     Run the entire data processing pipeline sequentially:
     Sorter -> Extractor -> CIO -> Translator
@@ -101,14 +108,26 @@ def run_all():
     After translator finishes successfully, cleans up all files in the /data directory
     EXCEPT for the final alpha_signal_*.md file.
     """
-    # 1. New York Timezone Check (After 07:30 NY time)
+    # 1. New York Timezone Check
     us_tz = pytz.timezone("America/New_York")
     ny_now = datetime.now(us_tz)
-    if ny_now.time() < datetime.strptime("07:30", "%H:%M").time():
-        logger.info(
-            f"Current NY time ({ny_now.strftime('%H:%M')}) is before 07:30. Skipping execution."
-        )
-        return
+
+    if report_type == "full":
+        if ny_now.time() < datetime.strptime("06:00", "%H:%M").time():
+            logger.info(
+                f"Current NY time ({ny_now.strftime('%H:%M')}) is before 06:00. Skipping execution."
+            )
+            return
+    elif report_type == "premarket":
+        if ny_now.time() < datetime.strptime("08:30", "%H:%M").time():
+            logger.info(
+                f"Current NY time ({ny_now.strftime('%H:%M')}) is before 08:30. Skipping execution."
+            )
+            return
+    elif report_type == "incremental":
+        # Incremental runs at 00:00 and 03:00, no time lock strictly needed,
+        # but we can let it pass anytime.
+        pass
 
     # 2. Duplicate Execution Prevention (Lock File)
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -124,7 +143,7 @@ def run_all():
         with open(lock_file, "w") as f:
             f.write(str(os.getpid()))
 
-        logger.info("Starting Buddy Core Pipeline...")
+        logger.info(f"Starting Buddy Core Pipeline (Type: {report_type})...")
 
         if not is_us_trading_day():
             logger.info(
@@ -132,37 +151,46 @@ def run_all():
             )
             return
 
-        logger.info(f"[0/4] Pulling Sieve data...")
-        pull_data_from_cloud()
+        logger.info(f"[0/4] Pulling Sieve data for {report_type}...")
+        pull_data_from_cloud(report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[1/4] Running Sorter...")
-        run_sorter()
+        run_sorter(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[2/4] Running Extractor...")
         run_extractor()
         logger.info("-----------------------------------------------------")
 
+        if report_type == "incremental":
+            logger.info("Incremental extraction complete. Skipping CIO and Translator.")
+            return
+
         logger.info("[3/4] Running CIO...")
-        run_cio()
+        run_cio(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[4/4] Running Translator...")
-        success = run_translator()
+        success = run_translator(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
         data_dir = os.path.join(project_root, "data")
 
         if success:
-            logger.info(
-                "Pipeline completed successfully. Cleaning up intermediate data files..."
-            )
-            _cleanup_data_files(data_dir)
-            logger.info("Cleanup complete.")
+            if report_type == "premarket":
+                logger.info(
+                    "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
+                )
+                _cleanup_data_files(data_dir)
+                logger.info("Cleanup complete.")
+            else:
+                logger.info(
+                    "Full pipeline completed successfully. Deferring cleanup until premarket run."
+                )
 
             # Automatically push to GitHub
-            push_to_github(data_dir)
+            push_to_github(data_dir, report_type)
 
             logger.info("Successfully completed Buddy Core Pipeline!")
         else:
@@ -178,7 +206,7 @@ def run_all():
             logger.info("Lock file removed.")
 
 
-def push_to_github(data_dir: str):
+def push_to_github(data_dir: str, report_type: str = "full"):
     """
     Adds, commits, and pushes the final alpha signal reports to GitHub.
     """
@@ -195,7 +223,7 @@ def push_to_github(data_dir: str):
         )
 
         # 2. Git Commit
-        commit_message = f"docs: add daily alpha signal reports: {datetime.now().strftime('%Y-%m-%d')}"
+        commit_message = f"docs: add daily {report_type} alpha signal report: {datetime.now().strftime('%Y-%m-%d')}"
         subprocess.run(
             ["git", "commit", "--allow-empty", "-m", commit_message],
             cwd=project_root,
@@ -232,4 +260,12 @@ def _cleanup_data_files(data_dir: str):
 
 
 if __name__ == "__main__":
-    run_all()
+    parser = argparse.ArgumentParser(description="Buddy Core Pipeline")
+    parser.add_argument(
+        "--type",
+        choices=["full", "premarket", "incremental"],
+        default="full",
+        help="Type of report to generate",
+    )
+    args = parser.parse_args()
+    run_all(report_type=args.type)
