@@ -114,19 +114,30 @@ def sort_articles_by_category(articles: list) -> dict:
     return categorized_articles
 
 
-def run_sorter():
+def run_sorter(report_type: str = "full"):
     try:
         # Test script loading the provided daily news file
         # Adjust path to the root folder where the JSON file lives.
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(base_dir, "data")
         os.makedirs(data_dir, exist_ok=True)
-        if len(sys.argv) > 1:
-            target_json_path = sys.argv[1]
+
+        if report_type == "premarket":
+            file_pattern = "premarket_news_*.json"
         else:
-            files = glob.glob(os.path.join(data_dir, "daily_news_*.json"))
+            file_pattern = "daily_news_*.json"
+
+        target_json_path = None
+        # Check if a json file is explicitly passed
+        for arg in sys.argv[1:]:
+            if arg.endswith(".json"):
+                target_json_path = arg
+                break
+
+        if not target_json_path:
+            files = glob.glob(os.path.join(data_dir, file_pattern))
             if not files:
-                logger.error("Error: Could not find any daily_news_*.json")
+                logger.error(f"Error: Could not find any {file_pattern}")
                 sys.exit(1)
             target_json_path = max(files, key=os.path.getmtime)
             logger.info(f"Auto-selected latest file: {target_json_path}")
