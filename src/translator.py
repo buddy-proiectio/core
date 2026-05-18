@@ -11,6 +11,7 @@ import sys
 import time
 import glob
 import logging
+import argparse
 
 LOG_FILE = "logs/translator.log"
 
@@ -475,17 +476,22 @@ def process_line(line: str) -> str:
     return final_line
 
 
-def run_translator():
+def run_translator(report_type: str = "full"):
+
     workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(workspace_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    # We are looking for files matching final_report_YYYYMMDD.txt
-    search_pattern = os.path.join(data_dir, "final_report_*.txt")
+    if report_type == "premarket":
+        search_pattern = os.path.join(data_dir, "premarket_report_*.txt")
+    else:
+        # We are looking for files matching final_report_YYYYMMDD.txt
+        search_pattern = os.path.join(data_dir, "final_report_*.txt")
+
     files = glob.glob(search_pattern)
 
     if not files:
-        logger.error("No input files matching final_report_YYYYMMDD.txt found.")
+        logger.error(f"No input files matching {search_pattern} found.")
         sys.exit(1)
 
     # Process the most recent file
@@ -493,12 +499,17 @@ def run_translator():
     input_file = files[0]
 
     filename = os.path.basename(input_file)
-    date_part = filename.replace("final_report_", "").replace(".txt", "")
 
-    output_filename = f"alpha_signal_{date_part}.md"
+    if report_type == "premarket":
+        date_part = filename.replace("premarket_report_", "").replace(".txt", "")
+        output_filename = f"alpha_signal_premarket_{date_part}.md"
+        english_output_filename = f"alpha_signal_premarket_{date_part}_en.md"
+    else:
+        date_part = filename.replace("final_report_", "").replace(".txt", "")
+        output_filename = f"alpha_signal_{date_part}.md"
+        english_output_filename = f"alpha_signal_{date_part}_en.md"
+
     output_file = os.path.join(data_dir, output_filename)
-
-    english_output_filename = f"alpha_signal_{date_part}_en.md"
     english_output_file = os.path.join(data_dir, english_output_filename)
 
     logger.info(f"Starting translation process...")
@@ -619,3 +630,15 @@ def run_translator():
         f"Translation complete. Successfully saved to {output_file} and {english_output_file}"
     )
     return True
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Translator Script")
+    parser.add_argument(
+        "--type",
+        choices=["full", "premarket"],
+        default="full",
+        help="Type of report to translate",
+    )
+    args = parser.parse_args()
+    run_translator(report_type=args.type)
