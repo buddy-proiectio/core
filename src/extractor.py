@@ -315,59 +315,8 @@ def run_extractor(data_dir: str = None):
 
                         # Rigid post-processing block
                         if output:
-                            # Instead of squashing all newlines blindly, we selectively squash
-                            # non-table lines, while preserving table lines.
-                            lines = output.split("\n")
-                            processed_lines = []
-                            in_table = False
-                            table_row_count = 0
-
-                            for line in lines:
-                                stripped = line.strip()
-                                if not stripped:
-                                    continue
-                                is_table_line = stripped.startswith(
-                                    "|"
-                                ) and stripped.endswith("|")
-
-                                if is_table_line:
-                                    if not in_table:
-                                        processed_lines.append("\n\n" + stripped)
-                                        in_table = True
-                                        table_row_count = 1
-                                    else:
-                                        table_row_count += 1
-                                        if table_row_count == 2:
-                                            is_separator = all(
-                                                c in "|-: \t" for c in stripped
-                                            )
-                                            if not is_separator:
-                                                prev_line = processed_lines[-1].strip()
-                                                col_count = prev_line.count("|") - 1
-                                                if col_count > 0:
-                                                    separator = (
-                                                        "|"
-                                                        + "|".join(["---"] * col_count)
-                                                        + "|"
-                                                    )
-                                                    processed_lines.append(
-                                                        "\n" + separator
-                                                    )
-                                        processed_lines.append("\n" + stripped)
-                                else:
-                                    if in_table:
-                                        processed_lines.append("\n\n" + stripped)
-                                        in_table = False
-                                        table_row_count = 0
-                                    else:
-                                        if processed_lines and not processed_lines[
-                                            -1
-                                        ].endswith("\n"):
-                                            processed_lines[-1] += " " + stripped
-                                        else:
-                                            processed_lines.append(stripped)
-
-                            output = "".join(processed_lines).strip()
+                            # Squash all newlines and excess whitespace natively
+                            output = " ".join(output.split())
 
                             # Remove pic.twitter.com links
                             output = re.sub(
@@ -435,7 +384,7 @@ def run_extractor(data_dir: str = None):
                             )
                             number_ratio = number_tokens / len(words) if words else 0
                             has_punctuation = bool(
-                                re.search(r"[,:;?!|]|\.\s|\.$", output)
+                                re.search(r"[,:;?!]|\.\s|\.$", output)
                             )
                             is_contextless = (
                                 number_ratio >= 0.30 and not has_punctuation
@@ -458,14 +407,7 @@ def run_extractor(data_dir: str = None):
                                 final_text = f"[{clean_title}]({article_url})"
                             else:
                                 logger.info(f"Task {idx:02d} [{category}] Extracted!")
-                                if output.startswith("|"):
-                                    final_text = (
-                                        f"[{clean_title}]({article_url})\n\n{output}"
-                                    )
-                                else:
-                                    final_text = (
-                                        f"[{clean_title}]({article_url})\n{output}"
-                                    )
+                                final_text = f"[{clean_title}]({article_url})\n{output}"
 
                             # Handle cases where SEC filings slip into normal extraction
                             if re.search(

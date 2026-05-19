@@ -15,8 +15,9 @@ def build_task_template(
         1. Read the provided JSON data and scan the entire text from the first to the last sentence.
         2. Identify and extract all "hard data KPIs" and "guidance figures" defined in the Goal, including those embedded within the narrative.
         3. ALWAYS extract complete sentences to preserve the full context. NEVER extract isolated numbers, fragmented phrases, or bullet points without context.
-        4. Output ONLY the raw extracted text blocks natively, excluding all conversational fillers, prefixes, numbering, or labels.
-        5. CRITICAL: {critical_condition}
+        4. ABSOLUTELY DO NOT extract tables. If important data is presented in a table, you MUST extract the surrounding narrative text that explains the data so that the context is fully understood without the table.
+        5. Output ONLY the raw extracted text blocks natively, excluding all conversational fillers, prefixes, numbering, or labels.
+        6. CRITICAL: {critical_condition}
         
         Here are the articles to process:
         {{input_text}}"""
