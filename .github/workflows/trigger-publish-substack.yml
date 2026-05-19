@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - "data/*_en.md"
+      - "!data/*premarket*_en.md"
 
 jobs:
   dispatch-substack:
@@ -28,8 +29,8 @@ jobs:
           set -e
 
           # Get markdown file added or modified in the data/ directory in the latest commit
-          # Specifically looking for *_en.md files
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r HEAD -- data/ | grep '_en\.md$' || true)
+          # Specifically looking for *_en.md files but ignoring premarket reports
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r HEAD -- data/ | grep '_en\.md$' | grep -v 'premarket' || true)
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No Substack (*_en.md) files changed."
