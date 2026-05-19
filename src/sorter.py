@@ -163,7 +163,11 @@ def run_sorter(report_type: str = "full"):
 
         # Extract the YYYYMMDD date from the filename: "daily_news_20260223.json" -> "20260223"
         filename = os.path.basename(target_json_path)
-        date_str = filename.replace("daily_news_", "").replace(".json", "")
+        date_str = (
+            filename.replace("daily_news_", "")
+            .replace("premarket_news_", "")
+            .replace(".json", "")
+        )
 
         # Export the 8 distinct JSON files
         logger.info("--- Exporting Files ---")
