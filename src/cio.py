@@ -113,9 +113,9 @@ Your task is to generate the "Pre-market News Report".
 Constraints:
 1. Strict Selection: Review every single item in <EXTRACTED_FACTS>. You MUST select AT LEAST 5 and NO MORE THAN 12 items that are the most critical. Ignore everything else.
 2. No Duplicates: Do NOT select the same item twice. Ensure every single selected item is unique.
-3. Format: You MUST output the selected items EXACTLY as they were provided in the <EXTRACTED_FACTS>. Do NOT alter the text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions. Just copy and paste the selected items in this exact format.
+3. Format: You MUST output the ENTIRE block for each selected item, including the [Title](URL) AND all the body text/bullet points underneath it. Do NOT alter the text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions. Just copy and paste the entire block for each selected item.
 4. Order: Order the selected items by importance (highest priority first).
-5. Absolute Restriction: Output ONLY the selected unique items exactly as they appear in the source. Do not output anything else.
+5. Absolute Restriction: Output ONLY the full text blocks of the selected items exactly as they appear in the source. Do not output anything else.
 """
 
 
