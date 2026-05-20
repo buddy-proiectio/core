@@ -15,11 +15,11 @@ import argparse
 from datetime import datetime
 import pytz
 
-# Eagerly import apscheduler and concurrent.futures to prevent lazy loading
+
+# Eagerly import concurrent.futures to prevent lazy loading
 # during script shutdown, which causes "can't register atexit after shutdown"
 try:
     import concurrent.futures.process
-    import apscheduler.schedulers.asyncio
 except ImportError:
     pass
 
@@ -113,7 +113,7 @@ Your task is to generate the "Pre-market News Report".
 Constraints:
 1. Strict Selection: Review every single item in <EXTRACTED_FACTS>. You MUST select AT LEAST 5 and NO MORE THAN 12 items that are the most critical. Ignore everything else.
 2. No Duplicates: Do NOT select the same item twice. Ensure every single selected item is unique.
-3. Format: You MUST output the ENTIRE block for each selected item, including the [Title](URL) AND all the body text/bullet points underneath it. Do NOT alter the text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions. Just copy and paste the entire block for each selected item.
+3. Format: You MUST output the title using the exact markdown format `[Title](URL)<br />` followed by a line break, and then the ENTIRE body text exactly as it appears. Do NOT drop or alter the URL. Do NOT alter the body text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions.
 4. Order: Order the selected items by importance (highest priority first).
 5. Absolute Restriction: Output ONLY the full text blocks of the selected items exactly as they appear in the source. Do not output anything else.
 """

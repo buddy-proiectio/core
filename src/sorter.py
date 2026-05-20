@@ -9,7 +9,6 @@ predefined groups such as Bitcoin, AI, Semiconductor, and Software.
 import json
 import os
 import glob
-import logging
 
 LOG_FILE = "logs/sorter.log"
 
@@ -66,7 +65,7 @@ def sort_articles_by_category(articles: list) -> dict:
 
     # Merge prompts.py keywords and legacy keywords
     routing_map = {
-        category: config.get("keywords", []).copy()
+        category: list(config.get("keywords", []))
         for category, config in AGENT_CONFIGS.items()
     }
     for category, keywords in legacy_routing_map.items():
@@ -102,7 +101,7 @@ def sort_articles_by_category(articles: list) -> dict:
                 category_scores[category] += matches
 
         # Find the category with the highest score
-        best_category = max(category_scores, key=category_scores.get)
+        best_category = max(category_scores, key=lambda k: category_scores[k])
 
         # If there's at least one match, assign to the best scoring category. Otherwise, fallback to 'Others'
         if category_scores[best_category] > 0:

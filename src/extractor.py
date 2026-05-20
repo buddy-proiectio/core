@@ -37,6 +37,7 @@ logger = setup_logger(LOG_FILE, __name__)
 
 from datetime import datetime
 import torch
+import typing
 import requests
 
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
@@ -53,7 +54,7 @@ from sentence_transformers import SentenceTransformer
 from prompts import get_agent_config, AGENT_CONFIGS
 
 
-def run_extractor(data_dir: str = None):
+def run_extractor(data_dir: typing.Optional[str] = None):
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
     Scans for category-specific JSON files, spins up a direct LLM execution pipeline
@@ -98,6 +99,14 @@ def run_extractor(data_dir: str = None):
             logger.error(f"Failed to load state file {state_filename}: {e}")
 
     extracted_urls_set = set(state_data["extracted_urls"])
+
+    extracted_urls: list = typing.cast(list, state_data["extracted_urls"])
+    category_sec_outputs: dict = typing.cast(
+        dict, state_data.get("category_sec_outputs", {})
+    )
+    category_normal_outputs: dict = typing.cast(
+        dict, state_data.get("category_normal_outputs", {})
+    )
 
     # Initialize lightweight embedding model globally for the run
     logger.info(
@@ -144,7 +153,7 @@ def run_extractor(data_dir: str = None):
 
             # Semantic Deduplication
             unique_articles = []
-            accepted_embeddings = []
+            accepted_embeddings: list[torch.Tensor] = []
             sem_dupes_count = 0
 
             for article in url_unique_articles:
@@ -162,9 +171,10 @@ def run_extractor(data_dir: str = None):
                 if accepted_embeddings:
                     # Compute similarity against previously accepted articles using model.similarity
                     # which returns an N x M tensor.
-                    cos_scores = embedder.similarity(
-                        emb, torch.stack(accepted_embeddings)
-                    )[0]
+                    emb_tensor: torch.Tensor = emb
+                    accepted_tensor = torch.stack(accepted_embeddings)
+                    embedder_any: typing.Any = embedder
+                    cos_scores = embedder_any.similarity(emb_tensor, accepted_tensor)[0]
                     if cos_scores.max().item() >= SEMANTIC_SIMILARITY_THRESHOLD:
                         sem_dupes_count += 1
                         is_duplicate = True
@@ -172,7 +182,7 @@ def run_extractor(data_dir: str = None):
                 if is_duplicate:
                     # Add to state so we don't re-check it in future incremental runs
                     extracted_urls_set.add(article_url)
-                    state_data["extracted_urls"].append(article_url)
+                    extracted_urls.append(article_url)
                     continue
 
                 unique_articles.append(article)
@@ -194,14 +204,6 @@ def run_extractor(data_dir: str = None):
             # Fetch the dynamic configuration for this role
             config = get_agent_config(category)
 
-            # keywords = config.get("keywords", [])
-            # # Compile regex patterns for exact word boundary matches
-            # keyword_patterns = (
-            #     [re.compile(r"\b" + re.escape(kw.lower()) + r"\b") for kw in keywords]
-            #     if keywords
-            #     else []
-            # )
-
             # Build the strict System Prompt
             system_prompt = (
                 f"Role: {config['role']}\n\n"
@@ -218,15 +220,6 @@ def run_extractor(data_dir: str = None):
                 # Remove emojis from input to save tokens and ensure clean extraction
                 title = re.sub(r"[\U00010000-\U0010ffff]", "", title)
                 content = re.sub(r"[\U00010000-\U0010ffff]", "", content)
-
-                # 1st Pass: Python Keyword Pre-filtering
-                # if keyword_patterns:
-                #     combined_text = (title + " " + content).lower()
-                #     if not any(
-                #         pattern.search(combined_text) for pattern in keyword_patterns
-                #     ):
-                #         # Skip this article completely if no keywords match
-                #         continue
 
                 input_text = (
                     f"\n--- BEGIN ARTICLE ---\n"
@@ -260,8 +253,10 @@ def run_extractor(data_dir: str = None):
         output_filename = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
         # Use the state loaded earlier
-        category_normal_outputs = state_data["category_normal_outputs"]
-        category_sec_outputs = state_data["category_sec_outputs"]
+        category_normal_outputs = typing.cast(
+            dict, state_data["category_normal_outputs"]
+        )
+        category_sec_outputs = typing.cast(dict, state_data["category_sec_outputs"])
 
         try:
             url = "http://127.0.0.1:11434/api/chat"
@@ -364,7 +359,7 @@ def run_extractor(data_dir: str = None):
                                     f"Task {idx:02d} [{category}] NO_EXTRACTION detected on first line. Skipping article completely."
                                 )
                                 extracted_urls_set.add(article_url)
-                                state_data["extracted_urls"].append(article_url)
+                                extracted_urls.append(article_url)
                                 continue
 
                             if letters_count == 0 or (
@@ -374,7 +369,7 @@ def run_extractor(data_dir: str = None):
                                     f"Task {idx:02d} [{category}] Extracted mostly numbers. Skipping article completely."
                                 )
                                 extracted_urls_set.add(article_url)
-                                state_data["extracted_urls"].append(article_url)
+                                extracted_urls.append(article_url)
                                 continue
 
                             # 2. Heuristic for "contextless numbers" (e.g., "$10.6 billion $2.65 38%")
@@ -421,7 +416,7 @@ def run_extractor(data_dir: str = None):
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
-                            state_data["extracted_urls"].append(article_url)
+                            extracted_urls.append(article_url)
                         else:
                             logger.info(
                                 f"Task {idx:02d} [{category}] Skipped (Empty output)"
