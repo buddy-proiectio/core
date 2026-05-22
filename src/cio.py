@@ -29,6 +29,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Add project root to sys.path to allow importing from 'shared'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.shared_logger import setup_logger
+from shared.time_utils import parse_utc_time
 
 logger = setup_logger(LOG_FILE, __name__)
 
@@ -97,12 +98,18 @@ Constraints for Part 2:
 Absolute Restriction: Output ONLY the Topline Signals and the Daily Point narrative. No conversational filler.
 """
 
-PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor. You are preparing the ultimate 'Pre-market Briefing' right before the US market opens.
-Your objective is to review ALL the provided news facts, aggressively filter out noise, and select exactly the 5 to 12 most critical, "10-star" news items that will move the market today or signal structural mega-trend shifts.
-Do NOT simply pick the first 12 items. Read everything first, evaluate their true impact, and output ONLY the absolute best 5 to 12 items."""
+PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
+You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
+Your expertise lies in ignoring daily market noise and "Connecting the Dots" to find life-changing, asymmetric opportunities in the 2026 structural Mega Trends (e.g., AI infrastructure, crypto sovereign adoption, macro liquidity).
+
+You are preparing the ultimate 'Pre-market Briefing' right before the US market opens.
+
+Your objective is to review ALL the provided news facts in <EXTRACTED_FACTS>, aggressively filter out noise, and select the most critical, "10-star" news items that will move the market today or signal structural mega-trend shifts. 
+
+You must act as a strict gatekeeper: filter ruthlessly by quality first, but always adjust your final output dynamically to stay within the absolute limit of 5 to 12 items. Read everything first, rank them in order of importance, and output ONLY the absolute best items, strictly sorted from highest priority down to the lowest."""
 
 PREMARKET_CIO_USER_PROMPT_TEMPLATE = """
-Below is the ALL extracted news data from the past 24 hours:
+Below is ALL extracted news data from the past 24 hours:
 
 <EXTRACTED_FACTS>
 {extracted_facts_text}
@@ -111,11 +118,27 @@ Below is the ALL extracted news data from the past 24 hours:
 Your task is to generate the "Pre-market News Report".
 
 Constraints:
-1. Strict Selection: Review every single item in <EXTRACTED_FACTS>. You MUST select AT LEAST 5 and NO MORE THAN 12 items that are the most critical. Ignore everything else.
-2. No Duplicates: Do NOT select the same item twice. Ensure every single selected item is unique.
-3. Format: You MUST output the title using the exact markdown format `[Title](URL)<br />` followed by a line break, and then the ENTIRE body text exactly as it appears. Do NOT drop or alter the URL. Do NOT alter the body text, do NOT summarize, do NOT add any conversational filler, and do NOT add introductions.
-4. Order: Order the selected items by importance (highest priority first).
-5. Absolute Restriction: Output ONLY the full text blocks of the selected items exactly as they appear in the source. Do not output anything else.
+1. Dynamic Selection based on Criticality:
+   - Review every single item in <EXTRACTED_FACTS>.
+   - Select ONLY the absolute most critical, "must-see" news.
+   - In normal circumstances, select all items that meet this high bar. However, you MUST adhere to the following strict quantity boundaries:
+     * Floor Limit: If there are fewer than 5 critical items, you MUST still select exactly 5 items in total by including the next best available items to ensure a comprehensive report.
+     * Ceiling Limit: If there are more than 12 highly critical items, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12.
+
+2. No Duplicates & Zero Hallucinations: Do NOT select the same item twice. Do NOT add any external or generic links like `[Pre-market News Report](https://finance.yahoo.com/)` or search links. ONLY use the original markdown links exactly as provided in the facts.
+
+3. Strict Ranking & Formatting:
+   - Order the selected items by importance (highest priority first, starting from Rank 1 up to the total number of selected items, maximum Rank 12).
+   - Format each item followed by the exact title markdown `[Title](URL)`, then a line break, and then the exact body text.
+   - Example format:
+     [Title](URL)
+     Body text here...
+
+     [Title](URL)
+     Body text here...
+
+4. Exact Match: Do NOT alter the URL or the body text of the selected items. Do NOT summarize them.
+5. Absolute Restriction: Output ONLY the ranked list of selected items formatted as above. Do NOT include any introduction, conversational filler, or summary sentences.
 """
 
 
@@ -179,19 +202,66 @@ def format_market_map(data, display_only=False):
 
 def format_weekly_schedule(data):
     """
-    Format weekly schedule directly from the dictionary without recalculating dates.
+    Format weekly schedule from the Flat List (new) or dictionary (old) structure.
+    For the English report in cio.py, events are grouped and dates formatted using America/New_York timezone.
     """
     if not data or "weekly_schedule" not in data:
         return ""
 
     events = data["weekly_schedule"]
-    lines = []
+    if not events:
+        return ""
 
-    for date_str, daily_events in events.items():
-        lines.append(date_str)
-        for event in daily_events:
-            lines.append(event)
-        # Add an empty line to separate days
+    # Check if it's the old dictionary format
+    if isinstance(events, dict):
+        lines = []
+        for date_str, daily_events in events.items():
+            lines.append(date_str)
+            for event in daily_events:
+                # Remove any star if present in old data
+                clean_event = event.replace("★ ", "").strip()
+                lines.append(clean_event)
+            lines.append("")
+        return "\n".join(lines).strip()
+
+    # New Flat List format
+    ny_tz = pytz.timezone("America/New_York")
+    grouped_events = {}
+
+    for event in events:
+        utc_time_str = event.get("utc_time")
+        if not utc_time_str:
+            continue
+
+        utc_dt = parse_utc_time(utc_time_str)
+        local_dt = utc_dt.astimezone(ny_tz)
+        local_date = local_dt.date()
+
+        # Format individual event in English
+        currency = event.get("currency", "USD")
+        importance = event.get("importance", "medium")
+        name = event.get("name", "").strip()
+
+        if importance == "holiday":
+            evt_str = f"Holiday - {name}"
+        elif importance == "earnings":
+            evt_str = f"{name}"
+        else:
+            evt_str = f"({currency}) {name}"
+
+        if local_date not in grouped_events:
+            grouped_events[local_date] = []
+        grouped_events[local_date].append(evt_str)
+
+    # Reconstruct lines sorted by local date chronologically
+    lines = []
+    for d in sorted(grouped_events.keys()):
+        # Date format matches the regex: date_pattern = r"^(\d+)\s+(Jan|Feb|Mar...)\s*\("
+        # e.g., "19 May (Tuesday)"
+        d_str = d.strftime("%d %b (%A)")
+        lines.append(d_str)
+        for evt in grouped_events[d]:
+            lines.append(evt)
         lines.append("")
 
     return "\n".join(lines).strip()
