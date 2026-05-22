@@ -6,6 +6,7 @@ from sorter import run_sorter
 from extractor import run_extractor
 from cio import run_cio
 from translator import run_translator
+from formatter import run_formatter
 import sys
 import os
 import subprocess
@@ -111,6 +112,7 @@ def run_all(report_type: str = "full"):
     # 1. New York Timezone Check
     us_tz = pytz.timezone("America/New_York")
     ny_now = datetime.now(us_tz)
+    today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
     if report_type == "full":
         if ny_now.time() < datetime.strptime("06:00", "%H:%M").time():
@@ -151,31 +153,70 @@ def run_all(report_type: str = "full"):
             )
             return
 
-        logger.info(f"[0/4] Pulling Sieve data for {report_type}...")
+        # Start processing pipeline
+        logger.info(f"[0/5] Pulling Sieve data for {report_type}...")
         pull_data_from_cloud(report_type)
         logger.info("-----------------------------------------------------")
 
-        logger.info("[1/4] Running Sorter...")
+        logger.info("[1/5] Running Sorter...")
         run_sorter(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
-        logger.info("[2/4] Running Extractor...")
+        logger.info("[2/5] Running Extractor...")
         run_extractor()
         logger.info("-----------------------------------------------------")
 
         if report_type == "incremental":
-            logger.info("Incremental extraction complete. Skipping CIO and Translator.")
+            logger.info("Incremental extraction complete. Skipping other processes.")
             return
 
-        logger.info("[3/4] Running CIO...")
+        logger.info("[3/5] Running CIO...")
         run_cio(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
-        logger.info("[4/4] Running Translator...")
-        success = run_translator(report_type=report_type)
+        logger.info("[4/5] Running Translator...")
+        ko_draft_file = run_translator(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
+        logger.info("[5/5] Running Formatter...")
+        logger.info("Running Formatter for English report...")
         data_dir = os.path.join(project_root, "data")
+        en_cio_file = os.path.join(
+            data_dir,
+            (
+                f"premarket_report_{today_str}.txt"
+                if report_type == "premarket"
+                else f"final_report_{today_str}.txt"
+            ),
+        )
+        en_out_file = os.path.join(
+            data_dir,
+            (
+                f"alpha_signal_premarket_{today_str}_en.md"
+                if report_type == "premarket"
+                else f"alpha_signal_{today_str}_en.md"
+            ),
+        )
+        success_en = run_formatter(en_cio_file, en_out_file, lang="en")
+
+        success_ko = False
+        if ko_draft_file and os.path.exists(ko_draft_file):
+            logger.info("Running Formatter for Korean report...")
+            ko_out_file = os.path.join(
+                data_dir,
+                (
+                    f"alpha_signal_premarket_{today_str}.md"
+                    if report_type == "premarket"
+                    else f"alpha_signal_{today_str}.md"
+                ),
+            )
+            success_ko = run_formatter(ko_draft_file, ko_out_file, lang="ko")
+        else:
+            logger.error(
+                "Korean draft translation file was not generated or does not exist."
+            )
+
+        success = success_en and success_ko
 
         if success:
             if report_type == "premarket":
