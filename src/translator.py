@@ -8,7 +8,6 @@ Implements a robust retry logic for transient errors.
 import os
 import re
 import sys
-import time
 import glob
 import logging
 import argparse
@@ -25,7 +24,7 @@ logger = setup_logger(LOG_FILE, __name__)
 # Suppress noisy INFO logs from external libraries
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-from deep_translator import GoogleTranslator, MyMemoryTranslator
+import translators as ts
 
 
 def chunk_text(text: str, limit: int = 4000) -> list[str]:
@@ -169,104 +168,79 @@ def make_polite(text: str) -> str:
     return text
 
 
+def contains_english(t: str) -> bool:
+    return bool(re.search(r"[a-zA-Z]", t))
+
+
+def contains_korean(t: str) -> bool:
+    return bool(re.search(r"[가-힣]", t))
+
+
+def translate_text_with_retry(text: str) -> str:
+    import time
+    import random
+
+    proxies = {"http": "socks5://127.0.0.1:9050", "https": "socks5://127.0.0.1:9050"}
+
+    for attempt in range(15):
+        method = attempt % 3
+        try:
+            if method == 0:
+                # Google with Tor
+                translated = ts.translate_text(
+                    text,
+                    from_language="en",
+                    to_language="ko",
+                    translator="google",
+                    proxies=proxies,
+                    timeout=10,
+                )
+            elif method == 1:
+                # Google direct (no proxy)
+                translated = ts.translate_text(
+                    text,
+                    from_language="en",
+                    to_language="ko",
+                    translator="google",
+                    timeout=10,
+                )
+            else:
+                # Bing direct (no proxy)
+                translated = ts.translate_text(
+                    text,
+                    from_language="en",
+                    to_language="ko",
+                    translator="bing",
+                    timeout=10,
+                )
+
+            translated_str = str(translated).strip()
+
+            # If successful, check if it actually translated to Korean
+            if translated_str and contains_korean(translated_str):
+                return make_polite(translated_str)
+
+        except Exception as e:
+            logger.warning(f"Translation attempt {attempt+1} failed: {e}")
+
+        # Exponential backoff with jitter
+        sleep_time = 0.5 * (2 ** (attempt % 3)) + random.uniform(0.1, 0.3)
+        time.sleep(sleep_time)
+
+    # Absolute fallback: return original text but log error
+    logger.error(f"All 15 translation attempts failed for: '{text}'")
+    return text
+
+
 def translate_text(text: str) -> str:
     if not text.strip():
         return text
 
-    def is_valid(t):
-        return t and "No translation was found" not in t
-
-    # Reduce default limit to be safer with Google Translate free tier
-    chunks = chunk_text(text, limit=2000)
-    translated_chunks = []
-
-    try:
-        google_translator = GoogleTranslator(source="en", target="ko")
-        mymemory_translator = MyMemoryTranslator(source="en", target="ko")
-
-        for i, chunk in enumerate(chunks):
-            if not chunk.strip():
-                translated_chunks.append(chunk)
-                continue
-
-            # Base delay to prevent hitting rate limits
-            if i > 0:
-                time.sleep(0.6)
-
-            translated = None
-            success = False
-
-            # 1. Try primary chunk translation with Google
-            try:
-                translated = google_translator.translate(chunk)
-                if is_valid(translated):
-                    success = True
-            except Exception as e:
-                logger.warning(f"Google Translation failed: {e}")
-
-            # 2. If Google failed, try MyMemory as fallback for the whole chunk
-            if not success:
-                logger.info(f"Retrying whole chunk with MyMemory...")
-                try:
-                    time.sleep(1)
-                    translated = mymemory_translator.translate(chunk)
-                    if is_valid(translated):
-                        success = True
-                except Exception as e:
-                    logger.warning(f"MyMemory Translation failed: {e}")
-
-            # 3. If both failed, try sub-chunking
-            if not success:
-                logger.warning(
-                    f"Chunk failed for both primary and fallback. Retrying with smaller chunks..."
-                )
-                sub_chunks = chunk_text(chunk, limit=400)
-                sub_translated = []
-                for sc in sub_chunks:
-                    if not sc.strip():
-                        sub_translated.append(sc)
-                        continue
-
-                    time.sleep(0.5)
-                    sc_translated = None
-                    # Try Google for sub-chunk
-                    try:
-                        res = google_translator.translate(sc)
-                        if is_valid(res):
-                            sc_translated = res
-                    except Exception:
-                        pass
-
-                    # Try MyMemory for sub-chunk if Google failed
-                    if not sc_translated:
-                        try:
-                            res = mymemory_translator.translate(sc)
-                            if is_valid(res):
-                                sc_translated = res
-                        except Exception:
-                            pass
-
-                    if sc_translated:
-                        sub_translated.append(sc_translated)
-                    else:
-                        logger.warning(
-                            f"Sub-chunk translation failed completely. Keeping original."
-                        )
-                        sub_translated.append(sc)
-
-                translated = " ".join([str(s) for s in sub_translated if s is not None])
-                translated_chunks.append(translated)
-            else:
-                translated_chunks.append(translated)
-
-        # Final safety check before join
-        translated_chunks = [str(c) for c in translated_chunks if c is not None]
-        final_translated = "".join(translated_chunks)
-        return make_polite(final_translated)
-    except Exception as e:
-        logger.error(f"Google translation failed: {e}")
-        # Instead of raising, return original text as a last resort to keep the process running
+    # If the text has no english remaining, return it directly!
+    if not contains_english(text):
         return text
+
+    return translate_text_with_retry(text)
 
 
 def process_line(line: str) -> str:
@@ -326,71 +300,10 @@ def process_line(line: str) -> str:
         ):
             return line_content + ("\n" if original_endswith_newline else "")
 
-    # 2.5) Earnings Schedule (Do not translate)
-    if stripped_line.startswith("★ [Earnings]"):
-        return line_content.replace("[Earnings]", "[실적]") + (
-            "\n" if original_endswith_newline else ""
-        )
-
-    # 3) Dates: Report Header (e.g., ## 20260224 -> ## 2026년 2월 24일 Alpha Signal
+    # 3) Dates: Report Header (e.g., ## 20260224) - Keep as-is for the formatter to handle
     m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped_line)
     if m_report:
-        year, month, day = m_report.groups()
-        replaced = f"## {year}년 {int(month)}월 {int(day)}일 Alpha Signal"
-        return line_content.replace(stripped_line, replaced) + (
-            "\n" if original_endswith_newline else ""
-        )
-
-    # 4) Dates: Weekly Schedule (e.g., 24 Feb (Tue) -> 2월 24일 (화))
-    date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\((Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\)$"
-    m_date = re.match(date_pattern, stripped_line)
-    if m_date:
-        day_str, month_str, dow_str = m_date.groups()
-        months_kr = {
-            "Jan": "1월",
-            "Feb": "2월",
-            "Mar": "3월",
-            "Apr": "4월",
-            "May": "5월",
-            "Jun": "6월",
-            "Jul": "7월",
-            "Aug": "8월",
-            "Sep": "9월",
-            "Oct": "10월",
-            "Nov": "11월",
-            "Dec": "12월",
-            "January": "1월",
-            "February": "2월",
-            "March": "3월",
-            "April": "4월",
-            "June": "6월",
-            "July": "7월",
-            "August": "8월",
-            "September": "9월",
-            "October": "10월",
-            "November": "11월",
-            "December": "12월",
-        }
-        days_kr = {
-            "Mon": "월",
-            "Tue": "화",
-            "Wed": "수",
-            "Thu": "목",
-            "Fri": "금",
-            "Sat": "토",
-            "Sun": "일",
-            "Monday": "월요일",
-            "Tuesday": "화요일",
-            "Wednesday": "수요일",
-            "Thursday": "목요일",
-            "Friday": "금요일",
-            "Saturday": "토요일",
-            "Sunday": "일요일",
-        }
-        replaced = f"{months_kr.get(month_str, month_str)} {int(day_str)}일 ({days_kr.get(dow_str, dow_str)})"
-        return line_content.replace(stripped_line, replaced) + (
-            "\n" if original_endswith_newline else ""
-        )
+        return line_content + ("\n" if original_endswith_newline else "")
 
     # 2. Check for structural symbols
     structural_symbols = ["## ", "### ", "* ", "★ ", "_ "]
@@ -409,23 +322,6 @@ def process_line(line: str) -> str:
     if not target_text.strip():
         # Re-attach the newline if it existed
         return prefix + ("\n" if original_endswith_newline else "")
-
-    # 5) Partial string replacements: [Macro] -> [매크로], [Earnings] -> [실적]
-    tags_mapping = {
-        "[US Macro]": "[미국 매크로]",
-        "[JP Macro]": "[일본 매크로]",
-        "[AU Macro]": "[호주 매크로]",
-        "[CN Macro]": "[중국 매크로]",
-        "[EUR Macro]": "[유럽 매크로]",
-        "[Earnings]": "[실적]",
-    }
-    for en_tag, kr_tag in tags_mapping.items():
-        target_text_lstrip = target_text.lstrip()
-        if target_text_lstrip.startswith(en_tag):
-            after_tag = target_text_lstrip[len(en_tag) :]
-            prefix += kr_tag + (" " if after_tag.startswith(" ") else "")
-            target_text = after_tag.lstrip()
-            break
 
     # 3. Check for Markdown Links
     pattern = r"\[(.*?)\]\((.*?)\)"
@@ -452,8 +348,8 @@ def process_line(line: str) -> str:
             else:
                 translated_title = translate_text(title)
 
-            # Reassemble strictly using Python
-            parts.append(f"[{translated_title}]({url})<br />")
+            # Reassemble strictly using Python (without <br /> formatting)
+            parts.append(f"[{translated_title}]({url})")
 
             last_idx = match.end()
 
@@ -477,7 +373,6 @@ def process_line(line: str) -> str:
 
 
 def run_translator(report_type: str = "full"):
-
     workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(workspace_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -485,7 +380,6 @@ def run_translator(report_type: str = "full"):
     if report_type == "premarket":
         search_pattern = os.path.join(data_dir, "premarket_report_*.txt")
     else:
-        # We are looking for files matching final_report_YYYYMMDD.txt
         search_pattern = os.path.join(data_dir, "final_report_*.txt")
 
     files = glob.glob(search_pattern)
@@ -497,86 +391,43 @@ def run_translator(report_type: str = "full"):
     # Process the most recent file
     files.sort(reverse=True)
     input_file = files[0]
-
     filename = os.path.basename(input_file)
 
     if report_type == "premarket":
         date_part = filename.replace("premarket_report_", "").replace(".txt", "")
-        output_filename = f"alpha_signal_premarket_{date_part}.md"
-        english_output_filename = f"alpha_signal_premarket_{date_part}_en.md"
+        output_filename = f"premarket_report_ko_draft_{date_part}.txt"
     else:
         date_part = filename.replace("final_report_", "").replace(".txt", "")
-        output_filename = f"alpha_signal_{date_part}.md"
-        english_output_filename = f"alpha_signal_{date_part}_en.md"
-
+        output_filename = f"final_report_ko_draft_{date_part}.txt"
     output_file = os.path.join(data_dir, output_filename)
-    english_output_file = os.path.join(data_dir, english_output_filename)
 
     logger.info(f"Starting translation process...")
     logger.info(f"Input: {input_file}")
-    logger.info(f"Output: {output_file}")
-    logger.info(f"English Output: {english_output_file}")
+    logger.info(f"Output Draft: {output_file}")
 
     with open(input_file, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
     translated_lines = []
-    english_lines = []
+    in_weekly_schedule = False
 
     for i, line in enumerate(lines):
         try:
-            translated_line = process_line(line)
-            english_line = line
-            stripped_original = line.lstrip()
+            stripped = line.strip()
 
-            # Format the Report Header for the English version
-            m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped_original)
-            if m_report:
-                year, month, day = m_report.groups()
-                months_en = [
-                    "Jan",
-                    "Feb",
-                    "Mar",
-                    "Apr",
-                    "May",
-                    "Jun",
-                    "Jul",
-                    "Aug",
-                    "Sep",
-                    "Oct",
-                    "Nov",
-                    "Dec",
-                ]
-                month_name = months_en[int(month) - 1]
-                formatted_en_header = f"## {day} {month_name} {year} Alpha Signal"
-                english_line = formatted_en_header + (
-                    "\n" if line.endswith("\n") else ""
-                )
+            # If we hit another section header, exit weekly schedule skip mode
+            if stripped.startswith("### ") and stripped != "### Weekly Schedule":
+                in_weekly_schedule = False
 
-            # Post-process to smartly add a markdown line break ('<br />')
-            # if this line is part of a list/schedule and the NEXT line is not empty.
-            date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\("
+            if in_weekly_schedule:
+                # Bypass translation entirely for weekly schedule contents
+                translated_line = line
+            else:
+                translated_line = process_line(line)
 
-            is_target_line = stripped_original.startswith(
-                ("_ ", "* ", "- ", "[", "★ ")
-            ) or re.match(date_pattern, stripped_original)
-
-            if is_target_line:
-                if i + 1 < len(lines) and lines[i + 1].strip():
-                    if not translated_line.endswith(
-                        "<br />\n"
-                    ) and not translated_line.endswith("<br />"):
-                        if translated_line.endswith("\n"):
-                            translated_line = translated_line[:-1] + "<br />\n"
-                        else:
-                            translated_line += "<br />"
-                    if not english_line.endswith(
-                        "<br />\n"
-                    ) and not english_line.endswith("<br />"):
-                        if english_line.endswith("\n"):
-                            english_line = english_line[:-1] + "<br />\n"
-                        else:
-                            english_line += "<br />"
+            # If we just hit the Weekly Schedule header, enter skip mode
+            if stripped == "### Weekly Schedule":
+                in_weekly_schedule = True
 
         except KeyboardInterrupt:
             logger.warning("Translation process interrupted. Exiting gracefully.")
@@ -586,50 +437,14 @@ def run_translator(report_type: str = "full"):
                 f"Failed to translate line {i+1}: '{line.strip()}'. Keeping original. Error: {e}"
             )
             translated_line = line
-            english_line = line
 
         translated_lines.append(translated_line)
-        english_lines.append(english_line)
-
-    # Post-process: Remove "---" below "Topline Signals" in "Daily Point"
-    def remove_topline_separator(lines_list):
-        processed = []
-        in_daily_point = False
-        found_topline = False
-        for line in lines_list:
-            stripped = line.strip()
-            # Section detection
-            if "### Daily Point" in line:
-                in_daily_point = True
-                found_topline = False
-            elif in_daily_point and stripped.startswith("### "):
-                in_daily_point = False
-                found_topline = False
-
-            if in_daily_point:
-                # Check for Topline Signals (English or Korean translations)
-                if "**Topline Signals**" in line:
-                    found_topline = True
-
-                # If we found topline and this line is exactly "---", skip it
-                if found_topline and stripped == "---":
-                    continue
-            processed.append(line)
-        return processed
-
-    translated_lines = remove_topline_separator(translated_lines)
-    english_lines = remove_topline_separator(english_lines)
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.writelines(translated_lines)
 
-    with open(english_output_file, "w", encoding="utf-8") as f:
-        f.writelines(english_lines)
-
-    logger.info(
-        f"Translation complete. Successfully saved to {output_file} and {english_output_file}"
-    )
-    return True
+    logger.info(f"Translation complete. Saved draft to {output_file}")
+    return output_file
 
 
 if __name__ == "__main__":
