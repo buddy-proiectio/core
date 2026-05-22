@@ -57,6 +57,25 @@ The pipeline operates in a **Dual-Trigger System** (Full vs. Pre-market) with **
 
 ---
 
+## Recent Refactoring & Architecture Enhancements
+
+### 1. Robust Timezone Separation & Shared Utilities
+- **Separated Concerns**: Timestamps are gathered as standard UTC strings in the Sieve pipeline (`daily_job.py`), formatted into `America/New_York` (EST/EDT) time for the English CIO report (`cio.py`), and then dynamically regrouped and reformatted into `Asia/Seoul` (KST) for the localized Korean report (`formatter.py`).
+- **Common Module (`shared/time_utils.py`)**: Centralized the duplicate `parse_utc_time` logic previously duplicated inside both `cio.py` and `formatter.py` into a shared, highly robust helper utility to maintain clean code and excellent maintainability.
+- **Investing.com API 400 Bad Request Fix**: Solved a query validation issue where `+` characters in timezone offsets were interpreted as spaces by the remote API server. We transitioned the manual f-string URL construction in `daily_job.py` to standard `requests` query parameter dictionary binding (`requests.get(..., params=params)`), enabling safe, automated URL-encoding (`%2B`).
+
+### 2. State-Driven Translation Bypass & Ultra-Slim Translator
+- **Weekly Schedule Skip Engine**: Identified that the translation engine was wasting resources translating schedule events that would be completely overwritten and replaced under KST in the subsequent formatting phase (`formatter.py`). 
+- **Bypass State Machine**: The translator (`translator.py`) now reads the markdown report and enters a **Bypass state** when it encounters the `### Weekly Schedule` section header. All content under this section is directly streamed and preserved word-for-word without invoking any translation API, drastically reducing cost, runtime, and potential translation artifacts.
+- **15-Tier Failover Translation Engine**: Built an incredibly resilient fallback architecture (`translate_text_with_retry`) featuring 15 retries across three layers: Tor Socks5 proxy Google Translate, local direct Google Translate, and local direct Bing Translate. It also implements unicode-based Korean validation to guarantee successful localized output.
+
+### 3. Smart Country Name Prefix Deduplicator
+- **Intelligent Deduplication**: When rendering the Korean weekly schedule, a common pattern of redundantly printing country names occurred (e.g., `(미국) 미국 소비자물가지수`).
+- **Dynamic Prefix Trimming**: Added a dynamic prefix deduplicator inside `formatter.py`'s calendar generator. If an event's translated Korean name starts with the `country` string (e.g. starts with `"미국"`), that prefix is stripped out (e.g., producing `(미국) 소비자물가지수`).
+- **Conditional Integrity**: If the country prefix and event country name differ (e.g., `country` is `"EU"` but the event is `"독일 GDP"`), the prefix is safely preserved (`(EU) 독일 GDP`), maintaining accurate geographic context.
+
+---
+
 ## Utilities & Infrastructure
 
 - **`src/prompts.py`**: Precise LLM prompt templates crafted to extract high-quality, actionable financial intelligence.
