@@ -54,6 +54,105 @@ from sentence_transformers import SentenceTransformer
 from prompts import get_agent_config, AGENT_CONFIGS
 
 
+def strip_tables(text: str) -> str:
+    """
+    Strips out markdown tables and plaintext financial table/statement blocks from the text
+    to prevent them from being processed by the LLM.
+    """
+    if not text:
+        return ""
+
+    # Split by lines
+    lines = text.split("\n")
+    filtered_lines = []
+
+    # Block-start keywords (case-insensitive) for plaintext financial statements/tables
+    table_block_headers = [
+        "consolidated statements of current earnings",
+        "consolidated statements of earnings",
+        "consolidated statements of operations",
+        "consolidated statements of comprehensive income",
+        "consolidated balance sheets",
+        "consolidated statements of cash flows",
+        "condensed consolidated statements",
+        "condensed consolidated balance sheets",
+        "non-gaap financial measure reconciliation",
+        "non-gaap financial measures reconciliation",
+        "reconciliation of adjusted operating",
+        "reconciliation of adjusted diluted",
+        "condensed consolidated statements of earnings",
+        "condensed consolidated statements of cash flows",
+        "three months ended",
+    ]
+
+    in_table_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            filtered_lines.append(line)
+            continue
+
+        # --- Markdown Table Row Detection ---
+        is_md_table_line = False
+        if "|" in stripped:
+            if stripped.count("|") >= 2:
+                is_md_table_line = True
+            elif stripped.startswith("|") or stripped.endswith("|"):
+                is_md_table_line = True
+            elif stripped == "|":
+                is_md_table_line = True
+
+        # Separator row checking (e.g. |---| or :---:)
+        if not is_md_table_line:
+            if (
+                set(stripped).issubset({"|", "-", ":", " "})
+                and "-" in stripped
+                and "|" in stripped
+            ):
+                is_md_table_line = True
+
+        if is_md_table_line:
+            continue
+
+        # --- Plaintext Financial Statement Block Detection ---
+        lower_stripped = stripped.lower()
+        should_start_block = False
+        for header in table_block_headers:
+            if header in lower_stripped:
+                # Special rule for "three months ended": only trigger if the line is short (table header)
+                if header == "three months ended":
+                    if len(stripped) < 60:
+                        should_start_block = True
+                else:
+                    should_start_block = True
+                break
+
+        if should_start_block:
+            in_table_block = True
+            continue
+
+        if in_table_block:
+            # Check if this line looks like a normal narrative paragraph to exit the block
+            digit_count = sum(c.isdigit() for c in stripped)
+            digit_ratio = digit_count / len(stripped) if stripped else 0
+
+            is_exit_paragraph = False
+            if len(stripped) >= 100 and digit_ratio < 0.15 and stripped.endswith("."):
+                is_exit_paragraph = True
+            elif stripped.lower().startswith("about ") and len(stripped) < 50:
+                is_exit_paragraph = True
+
+            if is_exit_paragraph:
+                in_table_block = False
+            else:
+                continue
+
+        filtered_lines.append(line)
+
+    return "\n".join(filtered_lines)
+
+
 def run_extractor(data_dir: typing.Optional[str] = None):
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
@@ -217,6 +316,9 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                 title = article.get("title", f"Article {idx+1}")
                 content = article.get("content", "")
 
+                # Pre-filter out tables (markdown & financial lists) from content
+                content = strip_tables(content)
+
                 # Remove emojis from input to save tokens and ensure clean extraction
                 title = re.sub(r"[\U00010000-\U0010ffff]", "", title)
                 content = re.sub(r"[\U00010000-\U0010ffff]", "", content)
@@ -280,7 +382,25 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                             f"Task {idx:02d}/{total_tasks} [{category}] SEC Filing detected. Bypassing LLM."
                         )
                         final_text = f"[{clean_title}]({article_url})"
-                        category_sec_outputs[category].append(final_text)
+
+                        # Double-check duplicates by URL or title
+                        is_dup = False
+                        for existing in category_sec_outputs[category]:
+                            if article_url != "#" and (
+                                article_url in existing or clean_title in existing
+                            ):
+                                is_dup = True
+                                break
+                        if not is_dup:
+                            for existing in category_normal_outputs[category]:
+                                if article_url != "#" and (
+                                    article_url in existing or clean_title in existing
+                                ):
+                                    is_dup = True
+                                    break
+
+                        if not is_dup:
+                            category_sec_outputs[category].append(final_text)
                         continue
 
                     payload = {
@@ -405,14 +525,31 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                                 final_text = f"[{clean_title}]({article_url})\n{output}"
 
                             # Handle cases where SEC filings slip into normal extraction
-                            if re.search(
-                                r"\b(8-K|10-K|10-Q|SEC Filing)\b",
-                                clean_title,
-                                re.IGNORECASE,
-                            ):
-                                category_sec_outputs[category].append(final_text)
-                            else:
-                                category_normal_outputs[category].append(final_text)
+                            is_dup = False
+                            for existing in category_sec_outputs[category]:
+                                if article_url != "#" and (
+                                    article_url in existing or clean_title in existing
+                                ):
+                                    is_dup = True
+                                    break
+                            if not is_dup:
+                                for existing in category_normal_outputs[category]:
+                                    if article_url != "#" and (
+                                        article_url in existing
+                                        or clean_title in existing
+                                    ):
+                                        is_dup = True
+                                        break
+
+                            if not is_dup:
+                                if re.search(
+                                    r"\b(8-K|10-K|10-Q|SEC Filing)\b",
+                                    clean_title,
+                                    re.IGNORECASE,
+                                ):
+                                    category_sec_outputs[category].append(final_text)
+                                else:
+                                    category_normal_outputs[category].append(final_text)
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
