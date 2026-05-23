@@ -13,6 +13,14 @@ import logging
 import warnings
 import re
 import pytz
+import sys
+from datetime import datetime
+import torch
+import typing
+import requests
+from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
+from transformers.utils import logging as hf_logging
+from sentence_transformers import SentenceTransformer
 
 # Suppress HuggingFace and Sentence-Transformers warnings/logs completely
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -26,30 +34,15 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 
 LOG_FILE = "logs/extractor.log"
 
-import sys
-
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# Add project root to sys.path to allow importing from 'shared'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.shared_logger import setup_logger
 
 logger = setup_logger(LOG_FILE, __name__)
 
-from datetime import datetime
-import torch
-import typing
-import requests
-
-from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
-
 disable_progress_bars()
 hf_hub_logging.set_verbosity_error()
-
-from transformers.utils import logging as hf_logging
-
 hf_logging.set_verbosity_error()
-
-from sentence_transformers import SentenceTransformer
 
 from prompts import get_agent_config, AGENT_CONFIGS
 

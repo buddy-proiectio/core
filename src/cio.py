@@ -14,26 +14,18 @@ import glob
 import argparse
 from datetime import datetime
 import pytz
-
-
-# Eagerly import concurrent.futures to prevent lazy loading
-# during script shutdown, which causes "can't register atexit after shutdown"
-try:
-    import concurrent.futures.process
-except ImportError:
-    pass
+import requests
 
 LOG_FILE = "logs/cio.log"
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# Add project root to sys.path to allow importing from 'shared'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from shared.shared_logger import setup_logger
 from shared.time_utils import parse_utc_time
 
 logger = setup_logger(LOG_FILE, __name__)
 
-import requests
 
 FULL_REPORT_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
 You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
@@ -98,15 +90,17 @@ Constraints for Part 2:
 Absolute Restriction: Output ONLY the Topline Signals and the Daily Point narrative. No conversational filler.
 """
 
-PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
-You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
-Your expertise lies in ignoring daily market noise and "Connecting the Dots" to find life-changing, asymmetric opportunities in the 2026 structural Mega Trends (e.g., AI infrastructure, crypto sovereign adoption, macro liquidity).
 
-You are preparing the ultimate 'Pre-market Briefing' right before the US market opens.
+PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor and a ruthless Chief Investment Officer (CIO). You are preparing the ultimate 'Pre-market News Report' right before the US market opens.
 
-Your objective is to review ALL the provided news facts in <EXTRACTED_FACTS>, aggressively filter out noise, and select the most critical, "10-star" news items that will move the market today or signal structural mega-trend shifts. 
+Your objective is to review ALL provided news facts in <EXTRACTED_FACTS>, aggressively filter out noise, and select the absolute most critical news items that will move the entire market today or signal structural mega-trend shifts.
 
-You must act as a strict gatekeeper: filter ruthlessly by quality first, but always adjust your final output dynamically to stay within the absolute limit of 5 to 12 items. Read everything first, rank them in order of importance, and output ONLY the absolute best items, strictly sorted from highest priority down to the lowest."""
+You evaluate news strictly through a 3-Dimension Scoring System:
+1. Macro & Market Impact (1-5 pts): Does this affect entire sectors, the Fed, or global liquidity? (e.g., Tesla FSD China, Stellantis $70B shift > individual retail store earnings)
+2. Surprise Factor & Catalyst Urgency (1-5 pts): Is this unexpected news that will trigger immediate pre-market/open trading volume?
+3. Structural Trend Shift (1-5 pts): Does this change the long-term competitive landscape of an industry?
+
+You must score every item, rank them by total score, and output ONLY the absolute best items, strictly filtered and formatted without any conversational filler."""
 
 PREMARKET_CIO_USER_PROMPT_TEMPLATE = """
 Below is ALL extracted news data from the past 24 hours:
@@ -118,18 +112,19 @@ Below is ALL extracted news data from the past 24 hours:
 Your task is to generate the "Pre-market News Report".
 
 Constraints:
-1. Dynamic Selection based on Criticality:
-   - Review every single item in <EXTRACTED_FACTS>.
-   - Select ONLY the absolute most critical, "must-see" news.
-   - In normal circumstances, select all items that meet this high bar. However, you MUST adhere to the following strict quantity boundaries:
-     * Floor Limit: If there are fewer than 5 critical items, you MUST still select exactly 5 items in total by including the next best available items to ensure a comprehensive report.
-     * Ceiling Limit: If there are more than 12 highly critical items, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12.
+1. Two-Step Scoring and Selection Process:
+   - Step 1: Mentally score every single item in <EXTRACTED_FACTS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift). Do NOT output the scores.
+   - Step 2: Filter and select the items with the highest scores. 
+   - Adhere to these strict quantity boundaries based on your scoring:
+     * Floor Limit: If there are fewer than 5 high-scoring items, you MUST still select exactly 5 items in total by including the next highest-scoring items available.
+     * Ceiling Limit: If there are more than 12 high-scoring items, you MUST cap the selection at exactly 12 items, choosing only the top 12.
 
-2. No Duplicates & Zero Hallucinations: Do NOT select the same item twice. Do NOT add any external or generic links like `[Pre-market News Report](https://finance.yahoo.com/)` or search links. ONLY use the original markdown links exactly as provided in the facts.
+2. No Duplicates & Zero Hallucinations: Do NOT select the same item twice. Do NOT add any external or generic links. ONLY use the original markdown links exactly as provided in the facts.
 
-3. Strict Ranking & Formatting:
-   - Order the selected items by importance (highest priority first, starting from Rank 1 up to the total number of selected items, maximum Rank 12).
-   - Format each item followed by the exact title markdown `[Title](URL)`, then a line break, and then the exact body text.
+3. Strict Ranking & Clean Formatting:
+   - Order the selected items by importance (highest score first).
+   - Format each item with the exact title markdown `[Title](URL)`, followed by a single line break, and then the exact body text.
+   - Do NOT include labels like "Rank 1", "Rank 2", "순위", "랭크", numbers, or bullet points before the title. Output ONLY the clean markdown links and bodies.
    - Example format:
      [Title](URL)
      Body text here...
@@ -288,7 +283,7 @@ def generate_full_report_commentary(
 
     url = "http://localhost:11434/api/chat"
     payload = {
-        "model": "llama3.1",
+        "model": "gemma4:e4b-mlx",
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
@@ -323,7 +318,7 @@ def select_premarket_news(facts_text: str) -> str:
 
     url = "http://localhost:11434/api/chat"
     payload = {
-        "model": "llama3.1",
+        "model": "gemma4:e4b-mlx",
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
@@ -331,7 +326,6 @@ def select_premarket_news(facts_text: str) -> str:
         "stream": False,
         "options": {
             "num_ctx": 16384,
-            "num_predict": 3000,
             "temperature": 0.0,
             "top_p": 0.1,
         },
