@@ -430,7 +430,7 @@ def generate_daily_commentary_ollama(
 
     url = "http://localhost:11434/api/chat"
     payload = {
-        "model": "gemma4:e4b",
+        "model": "llama3.1",
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
