@@ -11,11 +11,11 @@ import sys
 import glob
 import logging
 import argparse
+import translators as ts
 
 LOG_FILE = "logs/translator.log"
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# Add project root to sys.path to allow importing from 'shared'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.shared_logger import setup_logger
 
@@ -23,8 +23,6 @@ logger = setup_logger(LOG_FILE, __name__)
 
 # Suppress noisy INFO logs from external libraries
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-import translators as ts
 
 
 def chunk_text(text: str, limit: int = 4000) -> list[str]:
@@ -176,11 +174,44 @@ def contains_korean(t: str) -> bool:
     return bool(re.search(r"[가-힣]", t))
 
 
+def mask_numbers(text: str) -> tuple[str, list[str]]:
+    """
+    Masks large numbers with commas (e.g. $65,000, 185,000) using placeholders
+    to protect them from translation engine distortion.
+    """
+    if not text:
+        return text, []
+    # Matches optional escaped/raw dollar sign followed by comma-separated digits (at least one comma)
+    pattern = r"\\?\$?[0-9]{1,3}(?:,[0-9]{3})+"
+    placeholders = []
+
+    def repl(match):
+        placeholder = f"__NUM_{len(placeholders)}__"
+        placeholders.append(match.group(0))
+        return placeholder
+
+    masked_text = re.sub(pattern, repl, text)
+    return masked_text, placeholders
+
+
+def unmask_numbers(text: str, placeholders: list[str]) -> str:
+    """Restores original masked numbers from placeholders."""
+    if not text or not placeholders:
+        return text
+    for i, original in enumerate(placeholders):
+        placeholder = f"__NUM_{i}__"
+        text = text.replace(placeholder, original)
+    return text
+
+
 def translate_text_with_retry(text: str) -> str:
     import time
     import random
 
     proxies = {"http": "socks5://127.0.0.1:9050", "https": "socks5://127.0.0.1:9050"}
+
+    # Mask large numbers to protect them from distortion by the translation engine
+    masked_text, placeholders = mask_numbers(text)
 
     for attempt in range(15):
         method = attempt % 3
@@ -188,7 +219,7 @@ def translate_text_with_retry(text: str) -> str:
             if method == 0:
                 # Google with Tor
                 translated = ts.translate_text(
-                    text,
+                    masked_text,
                     from_language="en",
                     to_language="ko",
                     translator="google",
@@ -198,7 +229,7 @@ def translate_text_with_retry(text: str) -> str:
             elif method == 1:
                 # Google direct (no proxy)
                 translated = ts.translate_text(
-                    text,
+                    masked_text,
                     from_language="en",
                     to_language="ko",
                     translator="google",
@@ -207,7 +238,7 @@ def translate_text_with_retry(text: str) -> str:
             else:
                 # Bing direct (no proxy)
                 translated = ts.translate_text(
-                    text,
+                    masked_text,
                     from_language="en",
                     to_language="ko",
                     translator="bing",
@@ -216,9 +247,13 @@ def translate_text_with_retry(text: str) -> str:
 
             translated_str = str(translated).strip()
 
-            # If successful, check if it actually translated to Korean
-            if translated_str and contains_korean(translated_str):
-                return make_polite(translated_str)
+            # If successful, check if it actually translated to Korean or contains masked placeholders
+            if translated_str and (
+                contains_korean(translated_str) or "__NUM_" in translated_str
+            ):
+                # Restore original numbers safely
+                restored_text = unmask_numbers(translated_str, placeholders)
+                return make_polite(restored_text)
 
         except Exception as e:
             logger.warning(f"Translation attempt {attempt+1} failed: {e}")
@@ -232,6 +267,83 @@ def translate_text_with_retry(text: str) -> str:
     return text
 
 
+def split_into_sentences(text: str) -> list[str]:
+    """
+    Splits text into sentences using simple heuristics (delimiters followed by spaces or newlines),
+    while preserving spacing and punctuation.
+    """
+    # Split by period, question mark, or exclamation followed by space/newline, or raw newlines.
+    # The capture group keeps the delimiters so we can stitch them back.
+    tokens = re.split(r"(\. |\? |\! |\n)", text)
+    sentences = []
+    current = ""
+    for token in tokens:
+        if token in [". ", "? ", "! ", "\n"]:
+            current += token
+            sentences.append(current)
+            current = ""
+        else:
+            current += token
+    if current:
+        sentences.append(current)
+    return [s for s in sentences if s]
+
+
+def translate_large_text(text: str, max_chunk_len: int = 1200) -> str:
+    """
+    Splits a large text block into sentence-aware chunks and translates them individually
+    to avoid API payload limit errors.
+    """
+    if len(text) <= max_chunk_len:
+        return translate_text_with_retry(text)
+
+    sentences = split_into_sentences(text)
+    chunks = []
+    current_chunk = []
+    current_len = 0
+
+    for sentence in sentences:
+        sent_len = len(sentence)
+        if current_len + sent_len > max_chunk_len:
+            if current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+
+            # If a single sentence exceeds the limit, force character-based split
+            if sent_len > max_chunk_len:
+                sub_text = sentence
+                while len(sub_text) > max_chunk_len:
+                    # Find last space in the limit
+                    split_idx = sub_text.rfind(" ", 0, max_chunk_len)
+                    if split_idx == -1:
+                        split_idx = max_chunk_len
+                    chunks.append(sub_text[:split_idx])
+                    sub_text = sub_text[split_idx:].lstrip()
+                if sub_text:
+                    current_chunk.append(sub_text)
+                    current_len = len(sub_text)
+            else:
+                current_chunk.append(sentence)
+                current_len = sent_len
+        else:
+            current_chunk.append(sentence)
+            current_len += sent_len
+
+    if current_chunk:
+        chunks.append("".join(current_chunk))
+
+    translated_chunks = []
+    for chunk in chunks:
+        # Avoid redundant translations for pure formatting
+        if contains_english(chunk):
+            translated_chunks.append(translate_text_with_retry(chunk))
+        else:
+            translated_chunks.append(chunk)
+
+    return "".join(translated_chunks)
+
+
 def translate_text(text: str) -> str:
     if not text.strip():
         return text
@@ -240,7 +352,7 @@ def translate_text(text: str) -> str:
     if not contains_english(text):
         return text
 
-    return translate_text_with_retry(text)
+    return translate_large_text(text)
 
 
 def process_line(line: str) -> str:
