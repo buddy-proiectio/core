@@ -47,6 +47,52 @@ hf_logging.set_verbosity_error()
 from prompts import get_agent_config, AGENT_CONFIGS
 
 
+def strip_captions(text: str) -> str:
+    """
+    Strips out lines containing image, chart, or screenshot source captions
+    to prevent them from being processed as facts.
+    """
+    if not text:
+        return ""
+
+    lines = text.split("\n")
+    filtered_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            filtered_lines.append(line)
+            continue
+
+        # If line contains "Source:" (case-insensitive) and looks like a caption
+        if re.search(r"\bSource\s*:", stripped, re.IGNORECASE):
+            lower_line = stripped.lower()
+            # If it's a known charting/data platform or has metadata words
+            if any(
+                k in lower_line
+                for k in [
+                    "chart",
+                    "screenshot",
+                    "photo",
+                    "image",
+                    "diagram",
+                    "source:",
+                    "coinglass",
+                    "tradingview",
+                    "cryptic",
+                    "cointelegraph",
+                    "glassnode",
+                    "cryptoquant",
+                ]
+            ):
+                logger.info(f"Stripping caption line: {stripped}")
+                continue
+
+        filtered_lines.append(line)
+
+    return "\n".join(filtered_lines)
+
+
 def strip_tables(text: str) -> str:
     """
     Strips out markdown tables and plaintext financial table/statement blocks from the text
@@ -309,10 +355,10 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                 title = article.get("title", f"Article {idx+1}")
                 content = article.get("content", "")
 
-                # Pre-filter out tables (markdown & financial lists) from content
+                # Pre-filter out tables (markdown & financial lists),
+                # strip out image captions, remove emojis from input to save tokens and ensure clean extraction
                 content = strip_tables(content)
-
-                # Remove emojis from input to save tokens and ensure clean extraction
+                content = strip_captions(content)
                 title = re.sub(r"[\U00010000-\U0010ffff]", "", title)
                 content = re.sub(r"[\U00010000-\U0010ffff]", "", content)
 
@@ -429,6 +475,13 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                             # Remove pic.twitter.com links
                             output = re.sub(
                                 r"\s*(https?://)?pic\.twitter\.com/[A-Za-z0-9_/-]+",
+                                "",
+                                output,
+                            )
+
+                            # Remove Source captions from output (e.g., "... Source: Cointelegraph/TradingView")
+                            output = re.sub(
+                                r"(?i)\bSource\s*:\s*[A-Za-z0-9_/-]+(?:/[A-Za-z0-9_/-]+)*(?:\s*/[A-Za-z0-9_/-]+)?",
                                 "",
                                 output,
                             )
