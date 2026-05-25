@@ -42,7 +42,9 @@ def load_market_map():
         return {}
 
 
-def build_korean_weekly_schedule(events: list, market_map: dict) -> str:
+def build_korean_weekly_schedule(
+    events: list, market_map: dict, base_date_str: Optional[str] = None
+) -> str:
     # Weekdays translation
     WEEKDAYS_KO = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 
@@ -59,7 +61,27 @@ def build_korean_weekly_schedule(events: list, market_map: dict) -> str:
     }
 
     seoul_tz = pytz.timezone("Asia/Seoul")
-    grouped = {}
+
+    # Determine base date
+    if base_date_str:
+        try:
+            from datetime import datetime
+
+            base_date = datetime.strptime(base_date_str, "%Y%m%d").date()
+        except ValueError:
+            from datetime import datetime
+
+            base_date = datetime.now(seoul_tz).date()
+    else:
+        from datetime import datetime
+
+        base_date = datetime.now(seoul_tz).date()
+
+    # Generate Seoul KST-aligned 7 consecutive days
+    from datetime import timedelta
+
+    target_dates = [base_date + timedelta(days=i) for i in range(7)]
+    grouped = {d: [] for d in target_dates}
 
     for event in events:
         utc_time_str = event.get("utc_time")
@@ -67,8 +89,13 @@ def build_korean_weekly_schedule(events: list, market_map: dict) -> str:
             continue
 
         utc_dt = parse_utc_time(utc_time_str)
-        local_dt = utc_dt.astimezone(seoul_tz)
-        local_date = local_dt.date()
+
+        # TIMEZONE MIDNIGHT BUG FIX
+        if utc_dt.hour == 0 and utc_dt.minute == 0 and utc_dt.second == 0:
+            local_date = utc_dt.date()
+        else:
+            local_dt = utc_dt.astimezone(seoul_tz)
+            local_date = local_dt.date()
 
         currency = event.get("currency", "USD")
         importance = event.get("importance", "medium")
@@ -91,13 +118,13 @@ def build_korean_weekly_schedule(events: list, market_map: dict) -> str:
                 clean_ko_name = clean_ko_name.lstrip("-/ ").strip()
             evt_str = f"({country}) {clean_ko_name}"
 
-        if local_date not in grouped:
-            grouped[local_date] = []
-        grouped[local_date].append(evt_str)
+        # Only add if it falls within the 7-day range
+        if local_date in grouped:
+            grouped[local_date].append(evt_str)
 
     # Construct the KST weekly schedule block
     lines = []
-    for d in sorted(grouped.keys()):
+    for d in target_dates:
         weekday_kr = WEEKDAYS_KO[d.weekday()]
         header = f"{d.month}월 {d.day}일 ({weekday_kr})"
         lines.append(header)
@@ -144,31 +171,37 @@ def format_content(
 
     # 0. If language is Korean, reconstruct and replace the Weekly Schedule section with KST timezone
     if lang == "ko":
-        if not weekly_schedule_data:
-            # Try to find date in the content
-            m_date = re.search(r"##\s+(\d{4})년\s+(\d{1,2})월\s+(\d{1,2})일", content)
-            if m_date:
-                year, month, day = m_date.groups()
-                date_str = f"{year}{int(month):02d}{int(day):02d}"
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                data_dir = os.path.join(os.path.dirname(current_dir), "data")
-                news_file = os.path.join(data_dir, f"daily_news_{date_str}.json")
-                if os.path.exists(news_file):
-                    try:
-                        with open(news_file, "r", encoding="utf-8") as f:
-                            news_data = json.load(f)
-                        weekly_schedule_data = news_data.get("weekly_schedule", [])
-                    except Exception:
-                        pass
+        date_str = None
+        m_date_raw = re.search(r"##\s*(\d{8})", content)
+        m_date_ko = re.search(r"##\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", content)
+
+        if m_date_raw:
+            date_str = m_date_raw.group(1)
+        elif m_date_ko:
+            year, month, day = m_date_ko.groups()
+            date_str = f"{year}{int(month):02d}{int(day):02d}"
+
+        if date_str and not weekly_schedule_data:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = os.path.join(os.path.dirname(current_dir), "data")
+            news_file = os.path.join(data_dir, f"daily_news_{date_str}.json")
+            if os.path.exists(news_file):
+                try:
+                    with open(news_file, "r", encoding="utf-8") as f:
+                        news_data = json.load(f)
+                    weekly_schedule_data = news_data.get("weekly_schedule", [])
+                except Exception:
+                    pass
 
         if weekly_schedule_data:
             kst_schedule = build_korean_weekly_schedule(
-                weekly_schedule_data, market_map
+                weekly_schedule_data, market_map, date_str
             )
             content = replace_weekly_schedule_ko(content, kst_schedule)
 
     lines = content.split("\n")
     formatted_lines = []
+    in_weekly_schedule = False
 
     # 1. First pass: Handle headers, line-by-line formatting, earnings call conversion
     for i, line in enumerate(lines):
@@ -176,6 +209,19 @@ def format_content(
         if not stripped:
             formatted_lines.append(line)
             continue
+
+        # Skip standalone metadata markers like "**Daily Point**", "**데일리 포인트**", or "**일일 포인트**"
+        if re.search(
+            r"^\s*\**Daily\s+Point\**\s*$", stripped, re.IGNORECASE
+        ) or re.search(r"^\s*\**(?:데일리|일일)\s+포인트\**\s*$", stripped):
+            continue
+
+        # Track if we are inside the Weekly Schedule section
+        if stripped.startswith("### "):
+            if any(h in stripped for h in ["Weekly Schedule", "주간 일정"]):
+                in_weekly_schedule = True
+            else:
+                in_weekly_schedule = False
 
         # 1.0) Bold removal for "Good day" or "안녕하세요"
         line = re.sub(
@@ -216,6 +262,7 @@ def format_content(
             stripped.startswith(("_ ", "* ", "- ", "[", "★ ", "("))
             or re.match(date_pattern, stripped)
             or re.match(date_pattern_kr, stripped)
+            or (in_weekly_schedule and not stripped.startswith("###"))
         )
 
         if is_target_line:
@@ -268,6 +315,9 @@ def format_content(
 
     # Collapse 3 or more consecutive newlines to 2 newlines (1 blank line)
     formatted_text = re.sub(r"\n{3,}", "\n\n", formatted_text)
+
+    # 4. Escape raw dollars (except those already escaped) to prevent LaTeX rendering issues
+    formatted_text = re.sub(r"(?<!\\)\$", r"\$", formatted_text)
 
     return formatted_text
 
