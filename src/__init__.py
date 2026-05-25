@@ -223,7 +223,7 @@ def run_all(report_type: str = "full"):
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
-                _cleanup_data_files(data_dir)
+                # _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:
                 logger.info(

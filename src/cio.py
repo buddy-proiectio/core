@@ -1,20 +1,21 @@
 """
-The CIO (Chief Investment Officer Agent)
+The Chief Investment Officer (CIO) Agent
 
-This script takes the extracted hard facts from the Sieve and generates a
-comprehensive market summary and investment outlook report. It processes
-market indicators, weekly schedules, and other financial data to provide
-concise, actionable insights using an LLM.
+This script processes market indicators, weekly schedules, and extracted facts
+to generate a highly professional, billionaire-mentor styled daily commentary (Daily Point)
+and select the absolute most critical premarket news articles.
 """
 
+import argparse
+import glob
 import json
 import os
+import re
 import sys
-import glob
-import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import requests
+from typing import Optional
 
 LOG_FILE = "logs/cio.log"
 
@@ -26,8 +27,12 @@ from shared.time_utils import parse_utc_time
 
 logger = setup_logger(LOG_FILE, __name__)
 
+# ==============================================================================
+# 1. AI Prompts & Templates
+# ==============================================================================
 
-FULL_REPORT_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
+# Daily Point Narrative Commentary System Prompt
+DAILY_COMMENTARY_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
 You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
 Your expertise lies in ignoring daily market noise and "Connecting the Dots" to find life-changing, asymmetric opportunities in the 2026 structural Mega Trends (e.g., AI infrastructure, crypto sovereign adoption, macro liquidity).
 
@@ -35,7 +40,8 @@ You write in two distinct parts:
 1. TOPLINE SIGNALS: Cold, objective, terminal-style reporting of the 3 most critical KPIs.
 2. DAILY POINT: You do NOT simply list facts; you weave them into a compelling, practical narrative that guides the reader toward real financial independence. You write in highly professional, insightful, and polite narrative that guides the reader toward real financial independence."""
 
-FULL_REPORT_CIO_USER_PROMPT_TEMPLATE = """
+# Daily Point Narrative Commentary User Prompt Template
+DAILY_COMMENTARY_USER_PROMPT_TEMPLATE = """
 Below is the data for today's market:
 
 <MARKET_INDICATORS>
@@ -49,10 +55,6 @@ Below is the data for today's market:
 <EXTRACTED_FACTS>
 {extracted_facts_text}
 </EXTRACTED_FACTS>
-
-<PAST_MEMORY>
-{past_memory_text}
-</PAST_MEMORY>
 
 Your task is to generate a two-part report: "Topline Signals" followed by the "Daily Point" narrative commentary.
 
@@ -68,11 +70,11 @@ Constraints for Part 1:
 
 ---
 PART 2: Daily Point (Narrative Synthesis)
-Synthesize all the data (<MARKET_INDICATORS>, <WEEKLY_SCHEDULE>, <EXTRACTED_FACTS>, <PAST_MEMORY>) into a narrative commentary.
+Synthesize all the data (<MARKET_INDICATORS>, <WEEKLY_SCHEDULE>, <EXTRACTED_FACTS>) into a narrative commentary.
 
 Constraints for Part 2:
 1. Language & Tone: Write strictly in polite, professional English. Maintain the calm, decisive, and deeply insightful tone of a billionaire mentor guiding a protégé. Focus on real-world wealth building, not academic analysis.
-2. Continuity & Synthesis: If <PAST_MEMORY> is provided, review the historical progression of the market and our past analyses. Seamlessly weave insights from past trends with today's <EXTRACTED_FACTS> and <MARKET_INDICATORS>. Use phrases like "Building on our recent observations..." or "As we anticipated earlier this week..." to demonstrate long-term consistent logic.
+2. Continuity & Synthesis: Seamlessly weave insights from today's <EXTRACTED_FACTS> and <MARKET_INDICATORS>. Demonstrate professional, long-term consistent logic.
 3. Exact Structure (Sandwich Method): 
    - You MUST EXACTLY start your response with "Good day." followed by a line break.
    - DO NOT output any markdown headers or bullet points. Write in smooth, continuous text paragraphs.
@@ -90,8 +92,8 @@ Constraints for Part 2:
 Absolute Restriction: Output ONLY the Topline Signals and the Daily Point narrative. No conversational filler.
 """
 
-
-PREMARKET_CIO_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor and a ruthless Chief Investment Officer (CIO). You are preparing the ultimate 'Pre-market News Report' right before the US market opens.
+# Premarket News Selection System Prompt
+PREMARKET_SELECTION_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor and a ruthless Chief Investment Officer (CIO). You are preparing the ultimate 'Pre-market News Report' right before the US market opens.
 
 Your objective is to review ALL provided news facts in <EXTRACTED_FACTS>, aggressively filter out noise, and select the absolute most critical news items that will move the entire market today or signal structural mega-trend shifts.
 
@@ -102,7 +104,32 @@ You evaluate news strictly through a 3-Dimension Scoring System:
 
 You must score every item, rank them by total score, and output ONLY the absolute best items, strictly filtered and formatted without any conversational filler."""
 
-PREMARKET_CIO_USER_PROMPT_TEMPLATE = """
+# Premarket News Selection User Prompt (Gemini ID-Selection Mode)
+PREMARKET_SELECTION_USER_PROMPT_GEMINI = """
+Below is ALL extracted news data from the past 24 hours. Each news item is assigned a unique numerical "ARTICLE ID" (e.g. 1, 2, 3...):
+
+<EXTRACTED_FACTS_WITH_IDS>
+{articles_text_for_prompt}
+</EXTRACTED_FACTS_WITH_IDS>
+
+Your task is to select the most critical news items for the "Pre-market News Report".
+
+Constraints:
+1. Two-Step Scoring and Selection Process:
+   - Step 1: Evaluate every single item in <EXTRACTED_FACTS_WITH_IDS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift) out of a maximum of 15 points. Do NOT print or output the scores.
+   - Step 2: Target and select items that score **12 points or higher** as your priority. Then, adhere to these strict quantity boundaries:
+     * Floor Limit: If fewer than 5 items score 12+ points, you MUST still select exactly 5 items in total by padding the list with the next highest-scoring items available.
+     * Ceiling Limit: If more than 12 items score 12+ points, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12 highest-scoring items.
+
+2. Strict Output Format (JSON only):
+   - You MUST output your final selection strictly as a JSON object containing a single key "selected_ids", mapping to an array of numerical IDs in ranked order (highest score first).
+   - Do NOT include any markdown formatting, triple backticks (e.g., ```json), conversational filler, comments, or extra keys. Just return the raw JSON object.
+   - Example response format:
+   {{"selected_ids": [3, 7, 12, 1, 5]}}
+"""
+
+# Premarket News Selection User Prompt (Local Ollama Text-to-Text Fallback Mode)
+PREMARKET_SELECTION_USER_PROMPT_OLLAMA = """
 Below is ALL extracted news data from the past 24 hours:
 
 <EXTRACTED_FACTS>
@@ -113,11 +140,10 @@ Your task is to generate the "Pre-market News Report".
 
 Constraints:
 1. Two-Step Scoring and Selection Process:
-   - Step 1: Mentally score every single item in <EXTRACTED_FACTS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift). Do NOT output the scores.
-   - Step 2: Filter and select the items with the highest scores. 
-   - Adhere to these strict quantity boundaries based on your scoring:
-     * Floor Limit: If there are fewer than 5 high-scoring items, you MUST still select exactly 5 items in total by including the next highest-scoring items available.
-     * Ceiling Limit: If there are more than 12 high-scoring items, you MUST cap the selection at exactly 12 items, choosing only the top 12.
+   - Step 1: Evaluate every single item in <EXTRACTED_FACTS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift) out of a maximum of 15 points. Do NOT print or output the scores.
+   - Step 2: Target and select items that score **12 points or higher** as your priority. Then, adhere to these strict quantity boundaries:
+     * Floor Limit: If fewer than 5 items score 12+ points, you MUST still select exactly 5 items in total by padding the list with the next highest-scoring items available.
+     * Ceiling Limit: If more than 12 items score 12+ points, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12 highest-scoring items.
 
 2. No Duplicates & Zero Hallucinations: Do NOT select the same item twice. Do NOT add any external or generic links. ONLY use the original markdown links exactly as provided in the facts.
 
@@ -136,14 +162,17 @@ Constraints:
 5. Absolute Restriction: Output ONLY the ranked list of selected items formatted as above. Do NOT include any introduction, conversational filler, or summary sentences.
 """
 
+# ==============================================================================
+# 2. Helper Functions
+# ==============================================================================
 
-def format_market_map(data, display_only=False):
+
+def format_market_map(data: dict, display_only: bool = False) -> str:
     """
     Format the market map. If display_only is True, return only Dow, S&P, Nasdaq, Bitcoin.
     Otherwise, return a comprehensive text representation of sectors and industries for the LLM.
     """
     if not data or "market_map" not in data:
-        # Fallback to old format just in case
         if "market_indicators" in data:
             market_map = {"Indices": data["market_indicators"], "Sectors": {}}
         else:
@@ -153,7 +182,7 @@ def format_market_map(data, display_only=False):
 
     lines = []
 
-    # 1. Indices
+    # 1. Major Indices
     indices = market_map.get("Indices", {})
     display_keys = ["Dow Jones", "S&P 500", "Nasdaq", "Bitcoin"]
 
@@ -178,7 +207,7 @@ def format_market_map(data, display_only=False):
     if display_only:
         return "\n".join(lines)
 
-    # 2. Complete Market Map for Prompt
+    # 2. Complete Sector/Industry Heatmap for AI Context
     lines.append("\n[Detailed Market Map (S&P 500 + Target Tickers)]")
     sectors = market_map.get("Sectors", {})
     for sec_name, sec_data in sectors.items():
@@ -195,10 +224,11 @@ def format_market_map(data, display_only=False):
     return "\n".join(lines)
 
 
-def format_weekly_schedule(data):
+def format_weekly_schedule(data: dict, today_str: Optional[str] = None) -> str:
     """
-    Format weekly schedule from the Flat List (new) or dictionary (old) structure.
-    For the English report in cio.py, events are grouped and dates formatted using America/New_York timezone.
+    Format weekly schedule into a strict 7-day rolling calendar starting from today_str.
+    For the English report, events are grouped and dates formatted using America/New_York timezone.
+    All-day UTC midnight (00:00:00) events keep their date untouched to prevent timezone shifts.
     """
     if not data or "weekly_schedule" not in data:
         return ""
@@ -207,21 +237,20 @@ def format_weekly_schedule(data):
     if not events:
         return ""
 
-    # Check if it's the old dictionary format
-    if isinstance(events, dict):
-        lines = []
-        for date_str, daily_events in events.items():
-            lines.append(date_str)
-            for event in daily_events:
-                # Remove any star if present in old data
-                clean_event = event.replace("★ ", "").strip()
-                lines.append(clean_event)
-            lines.append("")
-        return "\n".join(lines).strip()
-
-    # New Flat List format
     ny_tz = pytz.timezone("America/New_York")
-    grouped_events = {}
+
+    # Determine base date
+    if today_str:
+        try:
+            base_date = datetime.strptime(today_str, "%Y%m%d").date()
+        except ValueError:
+            base_date = datetime.now(ny_tz).date()
+    else:
+        base_date = datetime.now(ny_tz).date()
+
+    # Generate exactly 7 consecutive dates
+    target_dates = [base_date + timedelta(days=i) for i in range(7)]
+    grouped_events = {d: [] for d in target_dates}
 
     for event in events:
         utc_time_str = event.get("utc_time")
@@ -229,10 +258,15 @@ def format_weekly_schedule(data):
             continue
 
         utc_dt = parse_utc_time(utc_time_str)
-        local_dt = utc_dt.astimezone(ny_tz)
-        local_date = local_dt.date()
 
-        # Format individual event in English
+        # TIMEZONE MIDNIGHT BUG FIX
+        if utc_dt.hour == 0 and utc_dt.minute == 0 and utc_dt.second == 0:
+            local_date = utc_dt.date()
+        else:
+            local_dt = utc_dt.astimezone(ny_tz)
+            local_date = local_dt.date()
+
+        # Format event description
         currency = event.get("currency", "USD")
         importance = event.get("importance", "medium")
         name = event.get("name", "").strip()
@@ -244,15 +278,13 @@ def format_weekly_schedule(data):
         else:
             evt_str = f"({currency}) {name}"
 
-        if local_date not in grouped_events:
-            grouped_events[local_date] = []
-        grouped_events[local_date].append(evt_str)
+        # Only group if it falls within the 7-day target range
+        if local_date in grouped_events:
+            grouped_events[local_date].append(evt_str)
 
     # Reconstruct lines sorted by local date chronologically
     lines = []
-    for d in sorted(grouped_events.keys()):
-        # Date format matches the regex: date_pattern = r"^(\d+)\s+(Jan|Feb|Mar...)\s*\("
-        # e.g., "19 May (Tuesday)"
+    for d in target_dates:
         d_str = d.strftime("%d %b (%A)")
         lines.append(d_str)
         for evt in grouped_events[d]:
@@ -262,28 +294,143 @@ def format_weekly_schedule(data):
     return "\n".join(lines).strip()
 
 
-def generate_full_report_commentary(
+def call_gemini_api(
+    sys_prompt: str, user_prompt: str, response_mime_type: str = "text/plain"
+) -> str:
+    """
+    Calls the Gemini API (REST endpoint) using the provided system and user prompts.
+    Tries early access gemini-3.5-flash first, then falls back gracefully to previous generations.
+    """
+    api_key = os.environ.get(
+        "GEMINI_API_KEY", "AIzaSyBUVV6-n_nbHW84hg8blEegy8jtEYBPf4g"
+    )
+
+    models_to_try = [
+        "gemini-3.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+    ]
+
+    last_err = None
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+
+        payload = {
+            "contents": [{"parts": [{"text": user_prompt}]}],
+            "systemInstruction": {"parts": [{"text": sys_prompt}]},
+            "generationConfig": {
+                "temperature": 0.0 if response_mime_type == "application/json" else 0.4,
+                "responseMimeType": response_mime_type,
+            },
+        }
+
+        try:
+            logger.info(f"Calling Gemini API with model: {model} ...")
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            if response.status_code == 404:
+                logger.warning(f"Model {model} returned 404. Trying fallback...")
+                continue
+            response.raise_for_status()
+            res_data = response.json()
+
+            candidates = res_data.get("candidates", [])
+            if not candidates:
+                raise ValueError("No candidates returned from Gemini API")
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                raise ValueError("No parts found in the first candidate")
+
+            content_text = parts[0].get("text", "").strip()
+            return content_text
+        except Exception as e:
+            logger.error(f"Error calling Gemini API with model {model}: {e}")
+            last_err = e
+            continue
+
+    if last_err:
+        raise last_err
+    else:
+        raise ValueError("Failed to call Gemini API: All models failed.")
+
+
+def clean_json_response(response_text: str) -> str:
+    """
+    Cleans any markdown blocks (```json ... ```) from the LLM response.
+    """
+    cleaned = response_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\n", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\n```$", "", cleaned)
+    return cleaned.strip()
+
+
+def parse_facts_into_articles(facts_text: str) -> list[dict]:
+    """
+    Parses facts_text (extracted_facts_YYYYMMDD.txt) into a list of articles.
+    """
+    blocks = re.split(r"\n\n+", facts_text)
+    articles = []
+
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        if block.startswith("### "):
+            continue
+
+        match = re.match(r"^\[(.*?)\]\((.*?)\)(?:\n([\s\S]*))?$", block)
+        if match:
+            title = match.group(1).strip()
+            url = match.group(2).strip()
+            body = match.group(3).strip() if match.group(3) else ""
+            articles.append(
+                {"title": title, "url": url, "body": body, "raw_block": block}
+            )
+
+    return articles
+
+
+def generate_daily_commentary_gemini(
     market_text: str,
     schedule_text: str,
     facts_text: str,
-    past_memory_text: str = "",
 ) -> str:
     """
-    Generate narrative commentary using local Ollama.
+    Generate Daily Point narrative commentary using Gemini 3.5 Flash.
     """
-    sys_prompt = FULL_REPORT_CIO_SYSTEM_PROMPT
-    user_prompt = FULL_REPORT_CIO_USER_PROMPT_TEMPLATE.format(
+    sys_prompt = DAILY_COMMENTARY_SYSTEM_PROMPT
+    user_prompt = DAILY_COMMENTARY_USER_PROMPT_TEMPLATE.format(
         market_indicators_text=market_text,
         weekly_schedule_text=schedule_text,
         extracted_facts_text=facts_text,
-        past_memory_text=(
-            past_memory_text if past_memory_text else "No past memory available."
-        ),
+    )
+
+    return call_gemini_api(sys_prompt, user_prompt, response_mime_type="text/plain")
+
+
+def generate_daily_commentary_ollama(
+    market_text: str,
+    schedule_text: str,
+    facts_text: str,
+) -> str:
+    """
+    Generate Daily Point narrative commentary using local Ollama.
+    """
+    sys_prompt = DAILY_COMMENTARY_SYSTEM_PROMPT
+    user_prompt = DAILY_COMMENTARY_USER_PROMPT_TEMPLATE.format(
+        market_indicators_text=market_text,
+        weekly_schedule_text=schedule_text,
+        extracted_facts_text=facts_text,
     )
 
     url = "http://localhost:11434/api/chat"
     payload = {
-        "model": "gemma4:e4b-mlx",
+        "model": "gemma4:e4b",
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
@@ -307,18 +454,72 @@ def generate_full_report_commentary(
         raise e
 
 
-def select_premarket_news(facts_text: str) -> str:
+def select_premarket_news_gemini(facts_text: str) -> str:
     """
-    Selects the top 5 to 12 most critical news items for the premarket briefing.
+    Selects the top 5 to 12 most critical news items for the premarket briefing using Gemini 3.5 Flash.
+    Parses facts into articles, assigns IDs, calls Gemini API in JSON Mode, and reconstructs the output in Python.
     """
-    sys_prompt = PREMARKET_CIO_SYSTEM_PROMPT
-    user_prompt = PREMARKET_CIO_USER_PROMPT_TEMPLATE.format(
+    articles = parse_facts_into_articles(facts_text)
+    if not articles:
+        logger.warning("No parsed articles found in facts text.")
+        return "No articles available for selection."
+
+    formatted_articles = []
+    for idx, art in enumerate(articles, 1):
+        formatted_articles.append(
+            f"--- ARTICLE ID: {idx} ---\n"
+            f"Title: {art['title']}\n"
+            f"URL: {art['url']}\n"
+            f"Body: {art['body']}\n"
+        )
+    articles_text_for_prompt = "\n".join(formatted_articles)
+
+    user_prompt = PREMARKET_SELECTION_USER_PROMPT_GEMINI.format(
+        articles_text_for_prompt=articles_text_for_prompt
+    )
+
+    gemini_response = call_gemini_api(
+        sys_prompt=PREMARKET_SELECTION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        response_mime_type="application/json",
+    )
+
+    cleaned_res = clean_json_response(gemini_response)
+    logger.info(f"Received premarket response from Gemini: {cleaned_res}")
+    res_data = json.loads(cleaned_res)
+    selected_ids = res_data.get("selected_ids", [])
+
+    selected_blocks = []
+    for s_id in selected_ids:
+        try:
+            s_idx = int(s_id) - 1
+            if 0 <= s_idx < len(articles):
+                selected_blocks.append(articles[s_idx]["raw_block"])
+        except (ValueError, TypeError):
+            continue
+
+    if not selected_blocks:
+        raise ValueError("No valid article IDs were returned or resolved from Gemini.")
+
+    selected_news = "\n\n".join(selected_blocks)
+    logger.info(
+        f"Successfully selected and merged {len(selected_blocks)} premarket news items using Gemini."
+    )
+    return selected_news
+
+
+def select_premarket_news_ollama(facts_text: str) -> str:
+    """
+    Selects the top 5 to 12 most critical news items for the premarket briefing using Ollama.
+    """
+    sys_prompt = PREMARKET_SELECTION_SYSTEM_PROMPT
+    user_prompt = PREMARKET_SELECTION_USER_PROMPT_OLLAMA.format(
         extracted_facts_text=facts_text
     )
 
     url = "http://localhost:11434/api/chat"
     payload = {
-        "model": "gemma4:e4b-mlx",
+        "model": "llama3.1",
         "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
@@ -326,6 +527,7 @@ def select_premarket_news(facts_text: str) -> str:
         "stream": False,
         "options": {
             "num_ctx": 16384,
+            "num_predict": 2000,
             "temperature": 0.0,
             "top_p": 0.1,
         },
@@ -341,12 +543,17 @@ def select_premarket_news(facts_text: str) -> str:
         raise e
 
 
+# ==============================================================================
+# 3. Main Executable Pipelines
+# ==============================================================================
+
+
 def run_full_cio(today_str: str, data_dir: str):
     news_file = os.path.join(data_dir, f"daily_news_{today_str}.json")
     output_file = os.path.join(data_dir, f"final_report_{today_str}.txt")
     facts_file = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
-    # Fallback finding latest files if today's don't exist
+    # Fallback to finding the latest files if today's don't exist
     if not os.path.exists(news_file):
         json_files = sorted(glob.glob(os.path.join(data_dir, "daily_news_*.json")))
         if json_files:
@@ -357,7 +564,7 @@ def run_full_cio(today_str: str, data_dir: str):
         if txt_files:
             facts_file = txt_files[-1]
 
-    # 1. Provide input files
+    # Load market indicators and weekly calendar feed
     data = {}
     if os.path.exists(news_file):
         logger.info(f"Loading market data from {news_file}")
@@ -371,6 +578,7 @@ def run_full_cio(today_str: str, data_dir: str):
             f"{news_file} not found. Proceeding with empty market/schedule data."
         )
 
+    # Load semantic extracted facts
     facts_text = ""
     if os.path.exists(facts_file):
         logger.info(f"Loading extracted facts from {facts_file}")
@@ -379,67 +587,38 @@ def run_full_cio(today_str: str, data_dir: str):
     else:
         logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
 
-    # Extract past memory for continuity
-    memory_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory"
-    )
-    os.makedirs(memory_dir, exist_ok=True)
-
-    past_memory_text = ""
-    memory_files = sorted(glob.glob(os.path.join(memory_dir, "memory_*.txt")))
-    memory_files = [f for f in memory_files if today_str not in f]
-
-    # Take the last 3 days to avoid exceeding context window
-    recent_memory_files = memory_files[-3:]
-    if recent_memory_files:
-        logger.info(
-            f"Loading past memory from {len(recent_memory_files)} recent files."
-        )
-        for m_file in recent_memory_files:
-            try:
-                with open(m_file, "r", encoding="utf-8") as f:
-                    past_memory_text += (
-                        f"--- Memory from {os.path.basename(m_file)} ---\n"
-                    )
-                    past_memory_text += f.read() + "\n\n"
-            except Exception as e:
-                logger.warning(f"Failed to load memory file {m_file}: {e}")
-
-    # 2. Format Market Map
+    # Format components
     market_text_for_prompt = format_market_map(data, display_only=False)
     market_text_for_report = format_market_map(data, display_only=True)
+    schedule_text = format_weekly_schedule(data, today_str)
 
-    # 3. Format Weekly Schedule
-    schedule_text = format_weekly_schedule(data)
-
-    # 4. Generate AI Commentary
-    logger.info("Generating full report AI commentary from local Ollama...")
+    # Generate Narrative Commentary
+    logger.info("Generating full report AI commentary from Gemini 3.5 Flash...")
     try:
-        commentary = generate_full_report_commentary(
+        commentary = generate_daily_commentary_gemini(
             market_text_for_prompt,
             schedule_text,
             facts_text,
-            past_memory_text,
         )
-        logger.info("Successfully generated AI commentary.")
+        logger.info("Successfully generated AI commentary using Gemini.")
     except Exception as e:
-        logger.error(f"Failed to generate AI commentary: {e}")
-        commentary = "Error generating commentary."
+        logger.warning(
+            f"Failed to generate AI commentary using Gemini API: {e}. Falling back to local Ollama..."
+        )
+        try:
+            commentary = generate_daily_commentary_ollama(
+                market_text_for_prompt,
+                schedule_text,
+                facts_text,
+            )
+            logger.info(
+                "Successfully generated AI commentary using local Ollama fallback."
+            )
+        except Exception as fallback_err:
+            logger.error(f"Full report commentary fallback also failed: {fallback_err}")
+            commentary = "Error generating commentary."
 
-    # Save today's context into the memory folder (English only, pre-translation)
-    logger.info("Saving today's context to memory...")
-    today_memory = f"Date: {today_str}\n\nMarket Map:\n{market_text_for_report}\n\nCommentary:\n{commentary}\n\nFacts:\n{facts_text}"
-    try:
-        with open(
-            os.path.join(memory_dir, f"memory_{today_str}.txt"),
-            "w",
-            encoding="utf-8",
-        ) as f:
-            f.write(today_memory)
-    except Exception as e:
-        logger.warning(f"Failed to save today's memory: {e}")
-
-    # 5. Merge output to target format
+    # Merge content into final report format
     logger.info("Merging content into final report format...")
     report = (
         f"## {today_str}\n\n"
@@ -451,7 +630,6 @@ def run_full_cio(today_str: str, data_dir: str):
         f"{facts_text}"
     )
 
-    # 6. Save final compiled string
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(report)
 
@@ -475,20 +653,27 @@ def run_premarket_cio(today_str: str, data_dir: str):
     else:
         logger.warning(f"{facts_file} not found. Proceeding with empty facts.")
 
-    # 4. Generate AI News Selection
-    logger.info("Selecting premarket news using local Ollama...")
+    # Select critical Premarket news items
+    logger.info("Selecting premarket news using Gemini...")
     try:
-        selected_news = select_premarket_news(facts_text)
-        logger.info("Successfully selected premarket news.")
+        selected_news = select_premarket_news_gemini(facts_text)
     except Exception as e:
-        logger.error(f"Failed to select premarket news: {e}")
-        selected_news = "Error selecting news."
+        logger.warning(
+            f"Failed to select premarket news using Gemini API: {e}. Falling back to local Ollama..."
+        )
+        try:
+            selected_news = select_premarket_news_ollama(facts_text)
+            logger.info(
+                "Successfully selected premarket news using local Ollama fallback."
+            )
+        except Exception as fallback_err:
+            logger.error(f"Premarket selection fallback also failed: {fallback_err}")
+            selected_news = "Error selecting news."
 
-    # 5. Premarket format
+    # Compile premarket report
     logger.info("Merging content into premarket report format...")
     report = f"## {today_str} Premarket\n\n{selected_news}"
 
-    # 6. Save final compiled string
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(report)
 
@@ -497,7 +682,6 @@ def run_premarket_cio(today_str: str, data_dir: str):
 
 def run_cio(report_type: str = "full"):
     try:
-        # Identify today's date for file paths
         us_tz = pytz.timezone("America/New_York")
         today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
