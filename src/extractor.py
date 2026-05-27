@@ -50,6 +50,7 @@ from prompts import get_agent_config, AGENT_CONFIGS
 def strip_captions(text: str) -> str:
     """
     Strips out lines containing image, chart, or screenshot source captions
+    as well as standalone chart labels, infographics, and diagram titles
     to prevent them from being processed as facts.
     """
     if not text:
@@ -64,10 +65,10 @@ def strip_captions(text: str) -> str:
             filtered_lines.append(line)
             continue
 
-        # If line contains "Source:" (case-insensitive) and looks like a caption
+        lower_line = stripped.lower()
+
+        # 1. If line contains "Source:" (case-insensitive) and looks like a caption
         if re.search(r"\bSource\s*:", stripped, re.IGNORECASE):
-            lower_line = stripped.lower()
-            # If it's a known charting/data platform or has metadata words
             if any(
                 k in lower_line
                 for k in [
@@ -87,6 +88,74 @@ def strip_captions(text: str) -> str:
             ):
                 logger.info(f"Stripping caption line: {stripped}")
                 continue
+
+        # 2. Strip standalone chart titles, consensus-charts, infographic labels, or quote buttons/links
+        is_chart_caption = False
+
+        # If it's a markdown link [Text](URL) where the Text or URL is related to a chart, infographic, or diagram
+        # e.g., [Chart of the Day](...) or [Nvidia vs Intel: diverging paths](.../charts/...)
+        link_match = re.match(r"^\[(.*?)\]\((.*?)\)(?:\s*<br\s*/?>)?$", stripped)
+        if link_match:
+            link_title = link_match.group(1).lower()
+            link_url = link_match.group(2).lower()
+            if any(
+                k in link_title
+                for k in [
+                    "chart",
+                    "infographic",
+                    "diagram",
+                    "table",
+                    "consensus-chart",
+                    "price-consensus",
+                ]
+            ):
+                is_chart_caption = True
+            elif any(
+                k in link_url for k in ["chart", "infographic", "diagram", "table"]
+            ):
+                is_chart_caption = True
+
+        # If it contains "price-consensus-chart" or "price-consensus" or "consensus-chart" or "price and consensus" or "price & consensus"
+        if any(
+            k in lower_line
+            for k in [
+                "price-consensus",
+                "consensus-chart",
+                "price and consensus",
+                "price & consensus",
+            ]
+        ):
+            is_chart_caption = True
+
+        # If it has the quote buttons/links typical of financial sites like Zacks or Yahoo Finance
+        # e.g. "Super Micro Computer, Inc. Quote" or "SMCI Quote" or "Alphabet Inc. Quote"
+        if re.search(r"\|\s*[\w\s.,&-]+\s+quote\b", lower_line):
+            is_chart_caption = True
+        elif lower_line.endswith("quote") and len(stripped) < 60:
+            is_chart_caption = True
+
+        # Standalone short lines ending with or containing chart/charts/infographic/infographics/diagram/diagrams
+        # e.g. "YTD Performance Chart", "Forward 12 Month (P/S) Valuation Chart"
+        if len(stripped) < 120:
+            # Matches words like chart, charts, infographic, infographics, diagram, diagrams
+            # Or table followed by a number/letter (e.g. "Table 1", "Table A")
+            if re.search(
+                r"\b(chart|charts|infographic|infographics|diagram|diagrams)\b",
+                lower_line,
+            ) or re.search(r"\btable\s+(\d+|[a-gi-z]\b)", lower_line):
+                # Ensure it's not a normal sentence like "The FED left rates unchanged, as shown in the chart."
+                # Normal sentences have verbs, lowercase words, are punctuated, etc.
+                if (
+                    not stripped.endswith(".")
+                    or len(stripped) < 60
+                    or "performance chart" in lower_line
+                    or "valuation chart" in lower_line
+                ):
+                    is_chart_caption = True
+
+        if is_chart_caption:
+            logger.info(f"Stripping standalone chart/infographic caption: {stripped}")
+            continue
 
         filtered_lines.append(line)
 
