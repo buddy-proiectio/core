@@ -17,7 +17,9 @@ def build_task_template(
         3. ALWAYS extract complete sentences to preserve the full context. NEVER extract isolated numbers, fragmented phrases, or bullet points without context.
         4. ABSOLUTELY DO NOT extract tables, statements, or lists of financial accounts. This includes markdown tables (using pipes '|' or hyphens '-') and raw plaintext tabular/schedule dumps (such as balance sheet lines, income statement lines, or rows/columns of numbers). If important data is presented in a table/list, you MUST ignore the table/list entirely and only extract the surrounding narrative text (paragraphs) that explains the data. Under no circumstances should you output '|' or lists of accounts with numbers.
         5. Output ONLY the raw extracted text blocks natively, excluding all conversational fillers, prefixes, numbering, or labels.
-        6. CRITICAL: {critical_condition}
+        6. **TITLE RELEVANCY**: Use the article's Title as a context guide. Only extract facts and KPIs that are directly relevant to the main subject, entity, or topic described in the Title. Do NOT extract generic market updates, boilerplate syndicated summaries of other companies, or unrelated stock performance stats at the end of the article if they have no direct relationship to the main topic in the Title.
+        7. **NO DUPLICATES / REDUNDANCY**: Within the same article, do NOT extract duplicate or virtually identical facts/sentences, even if they are written with slight variations (e.g., "$81.61B" vs "$81.61 billion", or different company tickers referring to the same earnings report). Only extract the first or best instance of that specific fact.
+        8. CRITICAL: {critical_condition}
         
         Here are the articles to process:
         {{input_text}}"""
