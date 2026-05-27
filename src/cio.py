@@ -230,12 +230,9 @@ def format_weekly_schedule(data: dict, today_str: Optional[str] = None) -> str:
     For the English report, events are grouped and dates formatted using America/New_York timezone.
     All-day UTC midnight (00:00:00) events keep their date untouched to prevent timezone shifts.
     """
-    if not data or "weekly_schedule" not in data:
-        return ""
-
-    events = data["weekly_schedule"]
-    if not events:
-        return ""
+    events = []
+    if data and "weekly_schedule" in data:
+        events = data["weekly_schedule"] or []
 
     ny_tz = pytz.timezone("America/New_York")
 

@@ -193,11 +193,13 @@ def format_content(
                 except Exception:
                     pass
 
-        if weekly_schedule_data:
-            kst_schedule = build_korean_weekly_schedule(
-                weekly_schedule_data, market_map, date_str
-            )
-            content = replace_weekly_schedule_ko(content, kst_schedule)
+        if weekly_schedule_data is None:
+            weekly_schedule_data = []
+
+        kst_schedule = build_korean_weekly_schedule(
+            weekly_schedule_data, market_map, date_str
+        )
+        content = replace_weekly_schedule_ko(content, kst_schedule)
 
     lines = content.split("\n")
     formatted_lines = []
