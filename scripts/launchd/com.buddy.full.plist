@@ -24,7 +24,7 @@
         <key>Hour</key>
         <integer>20</integer>
         <key>Minute</key>
-        <integer>2</integer>
+        <integer>5</integer>
     </dict>
 
     <key>StandardOutPath</key>
