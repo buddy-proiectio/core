@@ -176,13 +176,13 @@ def contains_korean(t: str) -> bool:
 
 def mask_numbers(text: str) -> tuple[str, list[str]]:
     """
-    Masks large numbers with commas (e.g. $65,000, 185,000) using placeholders
-    to protect them from translation engine distortion.
+    Masks large numbers with commas (e.g. 65,000, 185,000) using placeholders
+    to protect them from translation engine distortion. Keeps dollar signs outside.
     """
     if not text:
         return text, []
-    # Matches optional escaped/raw dollar sign followed by comma-separated digits (at least one comma)
-    pattern = r"\\?\$?[0-9]{1,3}(?:,[0-9]{3})+"
+    # Matches comma-separated digits (at least one comma)
+    pattern = r"[0-9]{1,3}(?:,[0-9]{3})+"
     placeholders = []
 
     def repl(match):
@@ -202,6 +202,190 @@ def unmask_numbers(text: str, placeholders: list[str]) -> str:
         placeholder = f"__NUM_{i}__"
         text = text.replace(placeholder, original)
     return text
+
+
+# If I add a new company name or CEO name, I need to update the entity_maps dictionary.
+def unify_entities(text: str) -> str:
+    """Standardizes company and CEO names to prevent inconsistency."""
+    if not text:
+        return text
+
+    entity_maps = {
+        # Companies
+        r"(?<![a-zA-Z0-9])(?:Nvidia|NVIDIA|NVIDA)(?![a-zA-Z0-9])|엔비디아|엔비다": "엔비디아",
+        r"(?<![a-zA-Z0-9])(?:Tesla|TSLA)(?![a-zA-Z0-9])|테슬라": "테슬라",
+        r"(?<![a-zA-Z0-9])Apple(?![a-zA-Z0-9])|애플": "애플",
+        r"(?<![a-zA-Z0-9])(?:Microsoft|MSFT)(?![a-zA-Z0-9])|마이크로소프트|(?<![a-zA-Z0-9])MS(?![a-zA-Z0-9])": "마이크로소프트",
+        r"(?<![a-zA-Z0-9])(?:Alphabet|Google|GOOGL?)(?![a-zA-Z0-9])|구글": "구글",
+        r"(?<![a-zA-Z0-9])(?:Meta Platforms|Meta)(?![a-zA-Z0-9])|메타": "메타",
+        r"(?<![a-zA-Z0-9])(?:Amazon|AMZN)(?![a-zA-Z0-9])|아마존": "아마존",
+        r"(?<![a-zA-Z0-9])OpenAI(?![a-zA-Z0-9])|오픈AI|오픈에이아이": "오픈AI",
+        r"(?<![a-zA-Z0-9])Anthropic(?![a-zA-Z0-9])|앤트로픽|앤쓰로픽": "앤트로픽",
+        r"(?<![a-zA-Z0-9])AMD(?![a-zA-Z0-9])|에이엠디": "AMD",
+        r"(?<![a-zA-Z0-9])Intel(?![a-zA-Z0-9])|인텔": "인텔",
+        r"(?<![a-zA-Z0-9])TSMC(?![a-zA-Z0-9])|티에스엠씨": "TSMC",
+        r"(?<![a-zA-Z0-9])(?:Super Micro Computer|Supermicro|SMCI)(?![a-zA-Z0-9])|슈퍼마이크로컴퓨터|슈퍼마이크로": "슈퍼마이크로컴퓨터",
+        r"(?<![a-zA-Z0-9])Broadcom(?![a-zA-Z0-9])|브로드컴": "브로드컴",
+        r"(?<![a-zA-Z0-9])(?:Arm Holdings|Arm|ARM)(?![a-zA-Z0-9])": "ARM",
+        r"(?<![a-zA-Z0-9])ASML(?![a-zA-Z0-9])|에이エス엠엘": "ASML",
+        r"(?<![a-zA-Z0-9])Oracle(?![a-zA-Z0-9])|오라클": "오라클",
+        r"(?<![a-zA-Z0-9])Palantir(?![a-zA-Z0-9])|팔란티어": "팔란티어",
+        r"(?<![a-zA-Z0-9])(?:Rocket Lab|RocketLab)(?![a-zA-Z0-9])|로켓랩": "로켓랩",
+        r"(?<![a-zA-Z0-9])(?:AST SpaceMobile|AST Space Mobile)(?![a-zA-Z0-9])|AST\s*스페이스모바일": "AST 스페이스모바일",
+        r"(?<![a-zA-Z0-9])Intuitive Machines(?![a-zA-Z0-9])|인튜이티브\s*머신스": "인튜이티브 머신스",
+        r"(?<![a-zA-Z0-9])Lockheed Martin(?![a-zA-Z0-9])|록히드\s*마틴": "록히드 마틴",
+        r"(?<![a-zA-Z0-9])Northrop Grumman(?![a-zA-Z0-9])|노스롭\s*그루먼": "노스롭 그루먼",
+        r"(?<![a-zA-Z0-9])L3Harris(?![a-zA-Z0-9])|L3해리스": "L3해리스",
+        r"(?<![a-zA-Z0-9])EchoStar(?![a-zA-Z0-9])|에코스타": "에코스타",
+        r"(?<![a-zA-Z0-9])State Street(?![a-zA-Z0-9])|스테이트\s*스트리트": "스테이트 스트리트",
+        r"(?<![a-zA-Z0-9])Vanguard(?![a-zA-Z0-9])|뱅가드": "뱅가드",
+        r"(?<![a-zA-Z0-9])(?:JPMorgan|J\.P\.\s*Morgan|JP\s*Morgan)(?![a-zA-Z0-9])|JP모건": "JP모건",
+        r"(?<![a-zA-Z0-9])(?:Bank of America|BofA|BAC)(?![a-zA-Z0-9])|뱅크\s*오브\s*아메리카|뱅크오브아메리카": "뱅크오브아메리카",
+        r"(?<![a-zA-Z0-9])Wells Fargo(?![a-zA-Z0-9])|웰스\s*파고|웰스파고": "웰스파고",
+        r"(?<![a-zA-Z0-9])Deutsche Bank(?![a-zA-Z0-9])|도이치\s*뱅크|도이치뱅크": "도이치뱅크",
+        r"(?<![a-zA-Z0-9])Salesforce(?![a-zA-Z0-9])|세일즈포스": "세일즈포스",
+        r"(?<![a-zA-Z0-9])Snowflake(?![a-zA-Z0-9])|스노우플레이크": "스노우플레이크",
+        r"(?<![a-zA-Z0-9])HPQ?(?![a-zA-Z0-9])|에이치피": "HP",
+        r"(?<![a-zA-Z0-9])(?:Micron Technology|Micron)(?![a-zA-Z0-9])|마이크론": "마이크론",
+        r"(?<![a-zA-Z0-9])Marvell(?![a-zA-Z0-9])|마벨|마벨\s*테크놀로지": "마벨",
+        r"(?<![a-zA-Z0-9])Coinbase(?![a-zA-Z0-9])|코인베이스": "코인베이스",
+        r"(?<![a-zA-Z0-9])Circle(?![a-zA-Z0-9])|써클|서클": "써클",
+        r"(?<![a-zA-Z0-9])(?:MicroStrategy|MSTR)(?![a-zA-Z0-9])|마이크로스트레티지": "마이크로스트레티지",
+        r"(?<![a-zA-Z0-9])Roundhill(?![a-zA-Z0-9])|라운드힐": "라운드힐",
+        # CEOs / People
+        r"Jensen Hwang|젠슨\s*황": "젠슨 황",
+        r"Elon Musk|일론\s*머스크": "일론 머스크",
+        r"Tim Cook|팀\s*쿡": "팀 쿡",
+        r"Satya Nadella|사티아\s*나델라": "사티아 나델라",
+        r"Sundar Pichai|순다르\s*피차이": "순다르 피차이",
+        r"Mark Zuckerberg|마크\s*저커버그|마크\s*주커버그": "마크 저커버그",
+        r"Andy Jassy|앤디\s*재시|앤디\s*제시": "앤디 재시",
+        r"Sam Altman|샘\s*올트먼|샘\s*알트만|샘\s*알트먼": "샘 올트먼",
+        r"Dario Amodei|다리오\s*아모데이": "다리오 아모데이",
+        r"Lisa Su|리사\s*수": "리사 수",
+        r"Pat Gelsinger|팻\s*겔싱어|패트릭\s*겔싱어": "팻 겔싱어",
+        r"C\.\s*C\.\s*Wei|C\s*C\s*Wei|CC\s*Wei|CC\s*웨이|CC웨이": "CC 웨이",
+        r"Charles Liang|찰스\s*리앙|찰스\s*량": "찰스 리앙",
+        r"Hock Tan|혹\s*탄": "혹 탄",
+        r"Rene Haas|르네\s*하스": "르네 하스",
+        r"Christophe Fouquet|크리스토프\s*푸케": "크리스토프 푸케",
+        r"Larry Ellison|래리\s*앨리슨": "래리 앨리슨",
+        r"Alex Karp|알렉스\s*카프": "알렉스 카프",
+        r"Peter Beck|피터\s*벡": "피터 벡",
+        r"Chamath Palihapitiya|차마스\s*팔리하피티야": "차마스 팔리하피티야",
+        r"Cathie Wood|캐시\s*우드": "캐시 우드",
+        r"Bill Ackman|빌\s*애크먼": "빌 애크먼",
+        r"Warren Buffett|워런\s*버핏": "워런 버핏",
+        r"Greg Abel|그렉\s*아벨": "그렉 아벨",
+        r"Alexei Gogolev|알렉시\s*고골레프": "알렉시 고골레프",
+        r"Bob Eddy|밥\s*에디": "밥 에디",
+        r"Amin Nasser|아민\s*나세르": "아민 나세르",
+        r"Bernie Sanders|버니\s*샌더스": "버니 샌더스",
+        r"Kevin Warsh|케빈\s*워시": "케빈 워시",
+        r"Jerome Powell|제롬\s*파월": "제롬 파월",
+        r"Donald Trump|도널드\s*트럼프": "도널드 트럼프",
+    }
+
+    for pattern, standard in entity_maps.items():
+        text = re.sub(pattern, standard, text, flags=re.IGNORECASE)
+
+    return text
+
+
+def resolve_korean_particles(text: str) -> str:
+    """
+    Grammatically resolves double Korean postpositions (particles) like 을(를) or 은(는)
+    based on the preceding word ending (consonant vs vowel) for Sino-Korean numbers,
+    English acronyms, and Hangul.
+    """
+    if not text:
+        return text
+
+    pattern = r"([a-zA-Z0-9$%,.%가-힣]+)\s*(은\(는\)|는\(은\)|이\(가\)|가\(이\)|을\(를\)|를\(을\)|와\(과\)|과\(와\)|으\(로\)|로\(으\))"
+
+    def check_has_padchim_and_rieul(word_str: str) -> tuple[bool, bool]:
+        cleaned = word_str.strip()
+
+        # If it has a dollar sign anywhere, it's read as '달러' -> no padchim
+        if "$" in cleaned or "\\$" in cleaned:
+            return False, False
+
+        # If it ends with %, read as '퍼센트'/'프로' -> no padchim
+        if cleaned.endswith("%"):
+            return False, False
+
+        numeric_cleaned = re.sub(r"[$,]", "", cleaned)
+
+        if re.match(r"^\d+(?:\.\d+)?$", numeric_cleaned):
+            if "." in numeric_cleaned:
+                last_digit = numeric_cleaned[-1]
+                has_padchim = last_digit in ["0", "1", "3", "6", "7", "8", "9"]
+                is_rieul = last_digit in ["1", "7", "8"]
+                return has_padchim, is_rieul
+            else:
+                if numeric_cleaned == "0":
+                    return True, False
+
+                num_str = numeric_cleaned
+                trailing_zeros = len(num_str) - len(num_str.rstrip("0"))
+
+                if trailing_zeros == 0:
+                    last_digit = num_str[-1]
+                    has_padchim = last_digit in ["0", "1", "3", "6", "7", "8", "9"]
+                    is_rieul = last_digit in ["1", "7", "8"]
+                    return has_padchim, is_rieul
+                else:
+                    m = trailing_zeros
+                    if 12 <= m <= 15:
+                        return False, False
+                    else:
+                        return True, False
+        else:
+            # Check if the last character is Hangul
+            last_char = cleaned[-1]
+            if "가" <= last_char <= "힣":
+                char_code = ord(last_char) - 0xAC00
+                has_padchim = (char_code % 28) != 0
+                is_rieul = (char_code % 28) == 8
+                return has_padchim, is_rieul
+
+            # English word or acronym
+            word = numeric_cleaned.lower()
+            if word.endswith("l") or word.endswith("le"):
+                return True, True
+            if (
+                word.endswith("m")
+                or word.endswith("me")
+                or word.endswith("n")
+                or word.endswith("ne")
+                or word.endswith("ng")
+            ):
+                return True, False
+
+            return False, False
+
+    def repl(match):
+        word_part = match.group(1)
+        particle_part = match.group(2)
+
+        has_padchim, is_rieul = check_has_padchim_and_rieul(word_part)
+
+        if particle_part in ["은(는)", "는(은)"]:
+            return word_part + ("은" if has_padchim else "는")
+        elif particle_part in ["이(가)", "가(이)"]:
+            return word_part + ("이" if has_padchim else "가")
+        elif particle_part in ["을(를)", "를(을)"]:
+            return word_part + ("을" if has_padchim else "를")
+        elif particle_part in ["와(과)", "과(와)"]:
+            return word_part + ("과" if has_padchim else "와")
+        elif particle_part in ["으(로)", "로(으)"]:
+            if has_padchim and not is_rieul:
+                return word_part + "으로"
+            else:
+                return word_part + "로"
+        return match.group(0)
+
+    return re.sub(pattern, repl, text)
 
 
 def translate_text_with_retry(text: str) -> str:
@@ -253,7 +437,11 @@ def translate_text_with_retry(text: str) -> str:
             ):
                 # Restore original numbers safely
                 restored_text = unmask_numbers(translated_str, placeholders)
-                return make_polite(restored_text)
+                # Unify companies & CEOs
+                unified_text = unify_entities(restored_text)
+                # Resolve double particles in final Korean text
+                resolved_text = resolve_korean_particles(unified_text)
+                return make_polite(resolved_text)
 
         except Exception as e:
             logger.warning(f"Translation attempt {attempt+1} failed: {e}")
