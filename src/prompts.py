@@ -19,7 +19,8 @@ def build_task_template(
         5. Output ONLY the raw extracted text blocks natively, excluding all conversational fillers, prefixes, numbering, or labels.
         6. **TITLE RELEVANCY**: Use the article's Title as a context guide. Only extract facts and KPIs that are directly relevant to the main subject, entity, or topic described in the Title. Do NOT extract generic market updates, boilerplate syndicated summaries of other companies, or unrelated stock performance stats at the end of the article if they have no direct relationship to the main topic in the Title.
         7. **NO DUPLICATES / REDUNDANCY**: Within the same article, do NOT extract duplicate or virtually identical facts/sentences, even if they are written with slight variations (e.g., "$81.61B" vs "$81.61 billion", or different company tickers referring to the same earnings report). Only extract the first or best instance of that specific fact.
-        8. CRITICAL: {critical_condition}
+        8. **TOPIC DIVISION**: If an article contains facts or data about multiple different companies, entities, or distinct topics (for example, comparing Salesforce's CRM performance and Oracle's infrastructure pre-payments), you MUST separate them using a single line break (\\n). Do NOT bundle them in the same continuous paragraph.
+        9. CRITICAL: {critical_condition}
         
         Here are the articles to process:
         {{input_text}}"""
@@ -535,6 +536,17 @@ AGENT_CONFIGS = {
             "valuation",
             "acquisition",
             "anti-trust",
+            "caterpillar",
+            "genset",
+            "gensets",
+            "turbine",
+            "reciprocating engine",
+            "power grid",
+            "electricity",
+            "utility",
+            "utilities",
+            "ge vernova",
+            "constellation energy",
         ],
     },
 }
