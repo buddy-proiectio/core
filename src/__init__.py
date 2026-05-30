@@ -12,6 +12,7 @@ import os
 import subprocess
 import time
 import argparse
+import json
 from datetime import datetime
 import glob
 import pytz
@@ -52,16 +53,16 @@ def pull_data_from_cloud(report_type: str = "full"):
     Change the following variables if you are not using the same environment as mine
     """
     ORACLE_IP_ADDRESS = "159.13.60.28"
-    ORACLE_SSH_KEY = "/Users/taehoonkwon__/.ssh/oracle-cloud-ssh.key"
+    ORACLE_SSH_KEY = "/Users/taehoonkwon/.ssh/oracle-cloud-ssh.key"
 
     if report_type == "premarket":
         remote_file = f"/home/ubuntu/data/premarket_news_{today}.json"
-        local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
+        local_dir = "/Users/taehoonkwon/workspaces/buddy-core/data"
         local_file = f"{local_dir}/premarket_news_{today}.json"
     else:
         # Both 'full' and 'incremental' use the daily_news file
         remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
-        local_dir = "/Users/taehoonkwon__/workspaces/buddy-core/data"
+        local_dir = "/Users/taehoonkwon/workspaces/buddy-core/data"
         local_file = f"{local_dir}/daily_news_{today}.json"
 
     os.makedirs(local_dir, exist_ok=True)
@@ -81,12 +82,36 @@ def pull_data_from_cloud(report_type: str = "full"):
             )
 
             if os.path.exists(local_file):
+                with open(local_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                if report_type == "full":
+                    market_map = data.get("market_map")
+                    is_empty = False
+                    if not market_map:
+                        is_empty = True
+                    elif isinstance(market_map, dict):
+                        indices = market_map.get("Indices")
+                        sectors = market_map.get("Sectors")
+                        if not indices and not sectors:
+                            is_empty = True
+
+                    if is_empty:
+                        raise ValueError(
+                            f"market_map is empty or missing in {local_file}"
+                        )
+
                 logger.info(f"Successfully pulled data: {local_file}")
                 return  # Success, exit function
             else:
                 raise FileNotFoundError(f"File not found after scp: {local_file}")
 
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as e:
             stderr_msg = ""
             if isinstance(e, subprocess.CalledProcessError) and e.stderr:
                 stderr_msg = f" | Details: {e.stderr.strip()}"
@@ -223,6 +248,7 @@ def run_all(report_type: str = "full"):
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
+                # TODO: enable after local tests complete
                 # _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:

@@ -122,12 +122,12 @@ graph TD
 
 2. **Python Packages**:
    Install via `pip install -r requirements.txt`.
-   Key dependencies: `feedparser`, `yfinance`, `sentence-transformers`, `deep-translator`, `pytz`, `holidays`, `cloudscraper`, `trafilatura`, `translators`.
+   Key dependencies: `feedparser`, `yfinance`, `sentence-transformers`, `pytz`, `holidays`, `cloudscraper`, `trafilatura`, `translators`.
 
 3. **Environment & API Keys**:
    - Set `FINNHUB_API_KEY` for earnings calls fetching.
    - Set `GEMINI_API_KEY` for fast, lightweight REST cloud inference.
-   - Configure Oracle Cloud SSH key (`/Users/taehoonkwon__/.ssh/oracle-cloud-ssh.key`) and target VM IPs inside `src/__init__.py`.
+   - Configure Oracle Cloud SSH key (`/Users/taehoonkwon/.ssh/oracle-cloud-ssh.key`) and target VM IPs inside `src/__init__.py`.
 
 4. **Local LLM**:
    - Keep the Ollama daemon active locally using `llama3.1` models.

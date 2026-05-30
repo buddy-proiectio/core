@@ -6,14 +6,14 @@
     <string>com.buddy.premarket</string>
 
     <key>WorkingDirectory</key>
-    <string>/Users/taehoonkwon__/workspaces/buddy-core</string>
+    <string>/Users/taehoonkwon/workspaces/buddy-core</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
         <string>-i</string>
-        <string>/Users/taehoonkwon__/workspaces/buddy-core/.venv/bin/python</string>
-        <string>/Users/taehoonkwon__/workspaces/buddy-core/src/__init__.py</string>
+        <string>/Users/taehoonkwon/workspaces/buddy-core/.venv/bin/python</string>
+        <string>/Users/taehoonkwon/workspaces/buddy-core/src/__init__.py</string>
         <string>--type</string>
         <string>premarket</string>
     </array>
@@ -28,8 +28,8 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/premarket_launchd.log</string>
+    <string>/Users/taehoonkwon/workspaces/buddy-core/logs/premarket_launchd.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/taehoonkwon__/workspaces/buddy-core/logs/premarket_launchd_error.log</string>
+    <string>/Users/taehoonkwon/workspaces/buddy-core/logs/premarket_launchd_error.log</string>
 </dict>
 </plist>

@@ -4,7 +4,7 @@ sentence-transformers
 transformers
 huggingface_hub
 
-deep-translator
+translators
 
 # --- Data Handling & Scheduling ---
 pytz
