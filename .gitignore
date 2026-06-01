@@ -30,10 +30,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.ruff_cache
 
 # Logs and outputs
 logs/
-data/.tmp*
+data/
 memory/
 
 # OS generated files
