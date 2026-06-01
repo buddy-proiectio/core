@@ -4,19 +4,14 @@ sentence-transformers
 transformers
 huggingface_hub
 
-translators
-
 # --- Data Handling & Scheduling ---
 pytz
-types-pytz
 holidays
 python-dateutil
+schedule
 
-# --- Shared (Needed for local Sieve development) ---
+# --- Web Scraping & Ingestion ---
 feedparser
 requests
-types-requests
-types-python-dateutil
-schedule
 cloudscraper
 trafilatura
