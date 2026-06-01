@@ -130,9 +130,15 @@ graph TD
      cp scripts/launchd/*.plist ~/Library/LaunchAgents/
      ```
    - Load the automated triggers:
+
      ```bash
-     launchctl load ~/Library/LaunchAgents/com.buddy.incremental.plist
-     launchctl load ~/Library/LaunchAgents/com.buddy.full.plist
-     launchctl load ~/Library/LaunchAgents/com.buddy.premarket.plist
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.buddy.incremental.plist
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.buddy.full.plist
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.buddy.premarket.plist
+
+     launchctl kickstart -kp gui/$(id -u)/com.buddy.incremental
+     launchctl kickstart -kp gui/$(id -u)/com.buddy.full
+     launchctl kickstart -kp gui/$(id -u)/com.buddy.premarket
      ```
+
    - _Note:_ Plists wrap scripts with `caffeinate -i` to guarantee the network and processor remain active during runs.
