@@ -5,7 +5,6 @@ Core processing modules for Buddy Core
 from sorter import run_sorter
 from extractor import run_extractor
 from cio import run_cio
-from translator import run_translator
 from formatter import run_formatter
 import sys
 import os
@@ -77,7 +76,7 @@ def pull_data_from_cloud(report_type: str = "full"):
                 f"Pulling data from oracle cloud storage... (Attempt {attempt}/{max_retries})"
             )
 
-            result = subprocess.run(
+            subprocess.run(
                 scp_command, shell=True, check=True, capture_output=True, text=True
             )
 
@@ -129,9 +128,9 @@ def pull_data_from_cloud(report_type: str = "full"):
 def run_all(report_type: str = "full"):
     """
     Run the entire data processing pipeline sequentially:
-    Sorter -> Extractor -> CIO -> Translator
+    Sorter -> Extractor -> CIO -> Formatter
 
-    After translator finishes successfully, cleans up all files in the /data directory
+    After formatter finishes successfully, cleans up all files in the /data directory
     EXCEPT for the final alpha_signal_*.md file.
     """
     # 1. New York Timezone Check
@@ -156,13 +155,72 @@ def run_all(report_type: str = "full"):
         # but we can let it pass anytime.
         pass
 
-    # 2. Duplicate Execution Prevention (Lock File)
+    # 2. Duplicate Execution Prevention (Lock File with Stale/Hung Process Validation)
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     lock_file = os.path.join(project_root, "logs", "buddy.lock")
 
     if os.path.exists(lock_file):
-        logger.warning("Already running (buddy.lock exists). Terminating pipeline.")
-        return
+        try:
+            with open(lock_file, "r") as lf:
+                lock_pid = int(lf.read().strip())
+        except Exception:
+            lock_pid = None
+
+        if lock_pid:
+            # Check if the process is actually running
+            is_running = False
+            try:
+                os.kill(lock_pid, 0)
+                is_running = True
+            except OSError:
+                is_running = False
+
+            if not is_running:
+                logger.info(
+                    f"Detected stale lock file (PID {lock_pid} is not running). Cleaning up lock and proceeding."
+                )
+                try:
+                    os.remove(lock_file)
+                except Exception:
+                    pass
+            else:
+                # If running, check how long it has been running (stale threshold: 2 hours)
+                try:
+                    lock_mtime = os.path.getmtime(lock_file)
+                    elapsed_hours = (time.time() - lock_mtime) / 3600.0
+                except Exception:
+                    elapsed_hours = 0.0
+
+                if elapsed_hours >= 2.0:
+                    logger.warning(
+                        f"Detected hung buddy process (PID {lock_pid}, running for {elapsed_hours:.1f} hours). Forcefully terminating the hung process to clear bottleneck."
+                    )
+                    try:
+                        import signal
+
+                        os.kill(lock_pid, signal.SIGKILL)
+                        time.sleep(2)
+                    except Exception as e:
+                        logger.error(f"Failed to kill hung process {lock_pid}: {e}")
+
+                    try:
+                        os.remove(lock_file)
+                        logger.info(
+                            "Hung process lock cleared. Proceeding with new pipeline."
+                        )
+                    except Exception:
+                        pass
+                else:
+                    logger.warning(
+                        f"Already running (Active process PID {lock_pid} detected, elapsed {elapsed_hours:.1f} hours). Terminating pipeline."
+                    )
+                    return
+        else:
+            try:
+                os.remove(lock_file)
+                logger.info("Removed corrupted lock file.")
+            except Exception:
+                pass
 
     try:
         # Create lock file
@@ -179,34 +237,26 @@ def run_all(report_type: str = "full"):
             return
 
         # Start processing pipeline
-        logger.info(f"[0/5] Pulling Sieve data for {report_type}...")
+        logger.info(f"[1/5] Pulling Sieve data for {report_type}...")
         pull_data_from_cloud(report_type)
         logger.info("-----------------------------------------------------")
 
-        logger.info("[1/5] Running Sorter...")
+        logger.info("[2/5] Running Sorter...")
         run_sorter(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
-        logger.info("[2/5] Running Extractor...")
+        logger.info("[3/5] Running Extractor...")
         run_extractor()
         logger.info("-----------------------------------------------------")
 
-        if report_type == "incremental":
-            logger.info("Incremental extraction complete. Skipping other processes.")
-            return
-
-        logger.info("[3/5] Running CIO...")
+        logger.info("[4/5] Running CIO...")
         run_cio(report_type=report_type)
-        logger.info("-----------------------------------------------------")
-
-        logger.info("[4/5] Running Translator...")
-        ko_draft_file = run_translator(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[5/5] Running Formatter...")
         logger.info("Running Formatter for English report...")
         data_dir = os.path.join(project_root, "data")
-        en_cio_file = os.path.join(
+        cio_file = os.path.join(
             data_dir,
             (
                 f"premarket_report_{today_str}.txt"
@@ -214,42 +264,22 @@ def run_all(report_type: str = "full"):
                 else f"final_report_{today_str}.txt"
             ),
         )
-        en_out_file = os.path.join(
+        out_file = os.path.join(
             data_dir,
             (
-                f"alpha_signal_premarket_{today_str}_en.md"
+                f"alpha_signal_premarket_{today_str}.md"
                 if report_type == "premarket"
-                else f"alpha_signal_{today_str}_en.md"
+                else f"alpha_signal_{today_str}.md"
             ),
         )
-        success_en = run_formatter(en_cio_file, en_out_file, lang="en")
-
-        success_ko = False
-        if ko_draft_file and os.path.exists(ko_draft_file):
-            logger.info("Running Formatter for Korean report...")
-            ko_out_file = os.path.join(
-                data_dir,
-                (
-                    f"alpha_signal_premarket_{today_str}.md"
-                    if report_type == "premarket"
-                    else f"alpha_signal_{today_str}.md"
-                ),
-            )
-            success_ko = run_formatter(ko_draft_file, ko_out_file, lang="ko")
-        else:
-            logger.error(
-                "Korean draft translation file was not generated or does not exist."
-            )
-
-        success = success_en and success_ko
+        success = run_formatter(cio_file, out_file)
 
         if success:
             if report_type == "premarket":
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
-                # TODO: enable after local tests complete
-                # _cleanup_data_files(data_dir)
+                _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:
                 logger.info(

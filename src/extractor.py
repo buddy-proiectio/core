@@ -22,6 +22,10 @@ from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_loggi
 from transformers.utils import logging as hf_logging
 from sentence_transformers import SentenceTransformer
 
+from shared.shared_logger import setup_logger
+
+from prompts import get_agent_config, AGENT_CONFIGS
+
 # Suppress HuggingFace and Sentence-Transformers warnings/logs completely
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -36,15 +40,12 @@ LOG_FILE = "logs/extractor.log"
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.shared_logger import setup_logger
 
 logger = setup_logger(LOG_FILE, __name__)
 
 disable_progress_bars()
 hf_hub_logging.set_verbosity_error()
 hf_logging.set_verbosity_error()
-
-from prompts import get_agent_config, AGENT_CONFIGS
 
 
 def strip_captions(text: str) -> str:
@@ -421,7 +422,7 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
             # Format input data for the Task and create 1-to-1 Task Mapping
             for idx, article in enumerate(unique_articles):
-                title = article.get("title", f"Article {idx+1}")
+                title = article.get("title", f"Article {idx + 1}")
                 content = article.get("content", "")
 
                 # Pre-filter out tables (markdown & financial lists),
@@ -711,7 +712,7 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
         if cnt == 0:
             logger.info(
-                f"Extraction finished, but NO facts were found. Categories written: 0."
+                "Extraction finished, but NO facts were found. Categories written: 0."
             )
         else:
             logger.info(
