@@ -5,25 +5,9 @@
     <key>Label</key>
     <string>com.buddy.premarket</string>
 
-    <key>WorkingDirectory</key>
-    <string>/Users/taehoonkwon/workspaces/buddy-core</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PYTHONPATH</key>
-        <string>/Users/taehoonkwon/workspaces/buddy-core</string>
-        <key>PYTHONUNBUFFERED</key>
-        <string>1</string>
-    </dict>
-
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/caffeinate</string>
-        <string>-i</string>
-        <string>/Users/taehoonkwon/workspaces/buddy-core/.venv/bin/python</string>
-        <string>/Users/taehoonkwon/workspaces/buddy-core/src/__init__.py</string>
-        <string>--type</string>
-        <string>premarket</string>
+        <string>/Users/taehoonkwon/workspaces/buddy/core/scripts/buddy-core-premarket.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -34,10 +18,5 @@
         <key>Minute</key>
         <integer>32</integer>
     </dict>
-
-    <key>StandardOutPath</key>
-    <string>/Users/taehoonkwon/workspaces/buddy-core/logs/premarket_launchd.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/taehoonkwon/workspaces/buddy-core/logs/premarket_launchd_error.log</string>
 </dict>
 </plist>
