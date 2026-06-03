@@ -1,0 +1,26 @@
+[project]
+name = "buddy-core"
+version = "0.2.1"
+description = "An automated, multi-agent intelligence system for investment research."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "sentence-transformers",
+    "transformers",
+    "huggingface-hub",
+    "pytz",
+    "holidays",
+    "python-dateutil",
+    "schedule",
+    "feedparser",
+    "requests",
+    "cloudscraper",
+    "trafilatura",
+    "types-pytz",
+    "types-requests",
+    "mlx-lm>=0.31.3",
+]
+
+[tool.uv]
+package = false

@@ -6,9 +6,9 @@ Topline Signals separator removal, and company name mapping for earnings calls.
 """
 
 import os
+import sys
 import re
 import json
-import sys
 import argparse
 import pytz
 from typing import Optional
@@ -50,38 +50,26 @@ def build_english_weekly_schedule(
         "Dec",
     ]
 
-    TICKER_TO_COMPANY_NAME = {
-        "NVDA": "NVIDIA",
-        "AAPL": "Apple",
-        "MSFT": "Microsoft",
-        "AMZN": "Amazon",
-        "GOOGL": "Alphabet",
-        "GOOG": "Alphabet",
-        "META": "Meta Platforms",
-        "TSLA": "Tesla",
-        "AVGO": "Broadcom",
-        "ASML": "ASML",
-        "AMD": "AMD",
-        "QCOM": "Qualcomm",
-        "INTC": "Intel",
-        "TXN": "Texas Instruments",
-        "MU": "Micron Technology",
-        "ADI": "Analog Devices",
-        "LRCX": "Lam Research",
-        "AMAT": "Applied Materials",
-        "SNOW": "Snowflake",
-        "CRM": "Salesforce",
-        "ORCL": "Oracle",
-        "NFLX": "Netflix",
-        "COIN": "Coinbase",
-        "MSTR": "MicroStrategy",
-        "DELL": "Dell Technologies",
-        "PLTR": "Palantir Technologies",
-        "SMCI": "Super Micro Computer",
-        "ARM": "Arm Holdings",
-        "PANW": "Palo Alto Networks",
-        "CSCO": "Cisco Systems",
-    }
+    TICKER_TO_COMPANY_NAME = {}
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        targets_file = os.path.join(project_root, "shared", "market_map_targets.json")
+        if os.path.exists(targets_file):
+            with open(targets_file, "r", encoding="utf-8") as f:
+                targets_data = json.load(f)
+                for item in targets_data:
+                    symbol = item.get("Symbol")
+                    company_name = item.get("Company Name")
+                    if symbol and company_name:
+                        TICKER_TO_COMPANY_NAME[symbol.upper()] = company_name
+        else:
+            logger.warning(f"market_map_targets.json not found at {targets_file}")
+    except Exception as e:
+        logger.error(f"Failed to load market_map_targets.json: {e}")
+
+    # Fallback mappings for aliases
+    if "GOOG" not in TICKER_TO_COMPANY_NAME and "GOOGL" in TICKER_TO_COMPANY_NAME:
+        TICKER_TO_COMPANY_NAME["GOOG"] = TICKER_TO_COMPANY_NAME["GOOGL"]
 
     ny_tz = pytz.timezone("America/New_York")
 

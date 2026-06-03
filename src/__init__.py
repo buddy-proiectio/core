@@ -2,12 +2,17 @@
 Core processing modules for Buddy Core
 """
 
+import os
+import sys
+
+# Add project root to sys.path to allow importing from 'shared' and local modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from sorter import run_sorter
 from extractor import run_extractor
 from cio import run_cio
 from formatter import run_formatter
-import sys
-import os
 import subprocess
 import time
 import argparse
@@ -17,8 +22,6 @@ import glob
 import pytz
 import holidays
 
-# Add project root to sys.path to allow importing from 'shared'
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.shared_logger import setup_logger
 
 logger = setup_logger(logger_name=__name__)
@@ -67,7 +70,7 @@ def pull_data_from_cloud(report_type: str = "full"):
     os.makedirs(local_dir, exist_ok=True)
     scp_command = f"scp -i {ORACLE_SSH_KEY} -o StrictHostKeyChecking=no ubuntu@{ORACLE_IP_ADDRESS}:{remote_file} {local_file}"
 
-    max_retries = 5
+    max_retries = 10 if report_type == "full" else 5
     retry_delay = 60  # seconds
 
     for attempt in range(1, max_retries + 1):
@@ -249,6 +252,12 @@ def run_all(report_type: str = "full"):
         run_extractor()
         logger.info("-----------------------------------------------------")
 
+        if report_type == "incremental":
+            logger.info(
+                "Incremental pipeline completed successfully up to Extractor. Exiting."
+            )
+            return
+
         logger.info("[4/5] Running CIO...")
         run_cio(report_type=report_type)
         logger.info("-----------------------------------------------------")
@@ -279,15 +288,12 @@ def run_all(report_type: str = "full"):
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
-                _cleanup_data_files(data_dir)
+                # _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:
                 logger.info(
                     "Full pipeline completed successfully. Deferring cleanup until premarket run."
                 )
-
-            # Automatically push to GitHub
-            push_to_github(data_dir, report_type)
 
             logger.info("Successfully completed Buddy Core Pipeline!")
         else:
@@ -301,41 +307,6 @@ def run_all(report_type: str = "full"):
         if os.path.exists(lock_file):
             os.remove(lock_file)
             logger.info("Lock file removed.")
-
-
-def push_to_github(data_dir: str, report_type: str = "full"):
-    """
-    Adds, commits, and pushes the final alpha signal reports to GitHub.
-    """
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-        # 1. Git Add (Specific to the alpha signal files)
-        # Using shell=True to allow glob expansion
-        subprocess.run(
-            "git add data/alpha_signal_*.md",
-            shell=True,
-            cwd=project_root,
-            check=True,
-        )
-
-        # 2. Git Commit
-        commit_message = f"docs: add daily {report_type} alpha signal report: {datetime.now().strftime('%Y-%m-%d')}"
-        subprocess.run(
-            ["git", "commit", "--allow-empty", "-m", commit_message],
-            cwd=project_root,
-            check=True,
-        )
-
-        # 3. Git Push
-        subprocess.run(["git", "push", "origin", "main"], cwd=project_root, check=True)
-
-        logger.info("Successfully pushed final reports to GitHub.")
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Git operation failed: {e}")
-    except Exception as e:
-        logger.error(f"An error occurred during git push: {e}")
 
 
 def _cleanup_data_files(data_dir: str):
