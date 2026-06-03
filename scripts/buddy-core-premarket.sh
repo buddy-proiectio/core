@@ -11,4 +11,4 @@ mkdir -p logs
 
 exec >> logs/premarket_launchd.log 2>> logs/premarket_launchd_error.log
 
-exec /usr/bin/caffeinate -i .venv/bin/python src/__init__.py --type premarket
+exec /usr/bin/caffeinate -s -i .venv/bin/python src/__init__.py --type premarket

@@ -11,4 +11,4 @@ mkdir -p logs
 
 exec >> logs/incremental_launchd.log 2>> logs/incremental_launchd_error.log
 
-exec /usr/bin/caffeinate -i .venv/bin/python src/__init__.py --type incremental
+exec /usr/bin/caffeinate -s -i .venv/bin/python src/__init__.py --type incremental
