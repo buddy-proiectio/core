@@ -14,6 +14,11 @@ import warnings
 import re
 import pytz
 import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from datetime import datetime
 import torch
 import typing
@@ -37,9 +42,6 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 
 LOG_FILE = "logs/extractor.log"
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = setup_logger(LOG_FILE, __name__)
 

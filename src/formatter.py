@@ -12,13 +12,14 @@ import json
 import argparse
 import pytz
 from typing import Optional
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from shared.shared_logger import setup_logger
 from shared.time_utils import parse_utc_time
 
 LOG_FILE = "logs/formatter.log"
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = setup_logger(LOG_FILE, __name__)
 
