@@ -19,7 +19,6 @@ dependencies = [
     "trafilatura",
     "types-pytz",
     "types-requests",
-    "mlx-lm>=0.31.3",
 ]
 
 [tool.uv]
