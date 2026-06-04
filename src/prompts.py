@@ -1,8 +1,6 @@
 def build_backstory(industry_focus: str, ignore_rule: str) -> str:
-    ignore_section = (
-        f"\n        - ALSO IGNORE {ignore_rule}." if ignore_rule else ""
-    )
-    return f"""You are a deterministic, zero-creativity extraction engine for {industry_focus}.
+    return f"""
+        You are a deterministic, zero-creativity extraction engine for {industry_focus}.
 
         [CRITICAL GATING RULE]
         First, check the text's purpose. If the text is a personal finance tutorial, personal retirement calculator guide, credit card/retail mortgage shopping tip, budget-saving tip, or lifestyle column, you MUST immediately output exactly "NO_EXTRACTION" and terminate. Do not extract anything.
@@ -108,7 +106,6 @@ AGENT_CONFIGS = {
             "foreclosure",
         ],
     },
-    
     # 2) Bitcoin (Bitcoin & Institutional Liquidity)
     "Bitcoin": {
         "role": "Exact Text Extraction Algorithm: Bitcoin & Institutional Liquidity",
@@ -179,7 +176,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 3) Semiconductor (Semiconductor & Supply Chain)
     "Semiconductor": {
         "role": "Exact Text Extraction Algorithm: Semiconductor & Supply Chain",
@@ -250,7 +246,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 4) AI (AI Models & Platforms)
     "AI": {
         "role": "Exact Text Extraction Algorithm: AI & Generative Models",
@@ -316,7 +311,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 5) Power & Grid (Power Infrastructure & Energy)
     "Power & Grid": {
         "role": "Exact Text Extraction Algorithm: Power Infrastructure & Energy",
@@ -367,7 +361,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 6) Robotics & Autonomy (Robotics & Autonomous Systems)
     "Robotics & Autonomy": {
         "role": "Exact Text Extraction Algorithm: Robotics & Autonomous Systems",
@@ -414,7 +407,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 7) Software (Enterprise Software & Cloud Services)
     "Software": {
         "role": "Exact Text Extraction Algorithm: Enterprise Software & Cloud Services",
@@ -475,7 +467,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 8) Bio (Biotechnology & Pharmaceuticals)
     "Bio": {
         "role": "Exact Text Extraction Algorithm: Biotechnology & Pharmaceuticals",
@@ -538,7 +529,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 9) Aerospace (Aerospace, Space Economy & Defense)
     "Aerospace": {
         "role": "Exact Text Extraction Algorithm: Aerospace & Space Economy",
@@ -600,7 +590,6 @@ AGENT_CONFIGS = {
             "acquisition",
         ],
     },
-    
     # 10) Others (Big Tech Platforms, Consumer, Global Supply Chains & Valuation)
     "Others": {
         "role": "Exact Text Extraction Algorithm: Mega-Cap Tech & Consumer Platforms",
