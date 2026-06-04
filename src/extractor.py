@@ -327,7 +327,8 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
     # 3. Loop through these categories
     for category in categories:
-        filename = f"{category}_sorted_{today_str}.json"
+        safe_category = category.replace(" ", "_")
+        filename = f"{safe_category}_sorted_{today_str}.json"
         filepath = os.path.join(data_dir, filename)
 
         # 4. Check if the file exists
@@ -692,28 +693,28 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
         # Save output to text file with filtering
         with open(output_filename, "w", encoding="utf-8") as out_f:
-            cnt = 0
+            total_facts = 0
             for cat in categories:
                 sec_outputs = category_sec_outputs.get(cat, [])
                 normal_outputs = category_normal_outputs.get(cat, [])
 
-                if sec_outputs or normal_outputs:
-                    cnt += 1
-                    out_f.write(f"### {cat}\n\n")
+                out_f.write(f"### {cat}\n\n")
 
-                    if sec_outputs:
-                        # Sort SEC filings alphabetically
-                        sec_outputs.sort(key=lambda x: x.upper())
-                        for out in sec_outputs:
-                            out_f.write(f"{out}\n\n")
+                if sec_outputs:
+                    # Sort SEC filings alphabetically
+                    sec_outputs.sort(key=lambda x: x.upper())
+                    for out in sec_outputs:
+                        out_f.write(f"{out}\n\n")
+                        total_facts += 1
 
-                    if normal_outputs:
-                        for out in normal_outputs:
-                            out_f.write(f"{out}\n\n")
+                if normal_outputs:
+                    for out in normal_outputs:
+                        out_f.write(f"{out}\n\n")
+                        total_facts += 1
 
-        if cnt == 0:
+        if total_facts == 0:
             logger.info(
-                "Extraction finished, but NO facts were found. Categories written: 0."
+                "Extraction finished, but NO facts were found."
             )
         else:
             logger.info(

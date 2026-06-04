@@ -43,23 +43,56 @@ def sort_articles_by_category(articles: list) -> dict:
             "PLTR",
             "Microsoft",
             "MSFT",
-            "Meta",
-            "META",
             "Oracle",
             "ORCL",
-            "Netflix",
-            "NFLX",
         ],
-        "Others": [
+        "Power & Grid": [
+            "GE Vernova",
+            "GEV",
+            "Constellation Energy",
+            "CEG",
+            "Vistra",
+            "VST",
+            "SMR",
+            "PPA",
+        ],
+        "Robotics & Autonomy": [
             "Tesla",
             "TSLA",
+            "Symbotic",
+            "SYM",
+            "FSD",
+        ],
+        "Others": [
             "Apple",
             "AAPL",
             "Amazon",
             "AMZN",
             "Walmart",
             "WMT",
+            "Meta",
+            "META",
+            "Google",
+            "GOOG",
+            "GOOGL",
+            "Netflix",
+            "NFLX",
+            "Costco",
+            "COST",
         ],
+    }
+
+    # Negative keywords list to penalize non-investment/personal-finance noise
+    negative_keywords = {
+        "General": [
+            "how to apply", "refinance your", "best credit card", "retirement calculator",
+            "how to budget", "save money", "personal loan options", "mortgage tips for buyers",
+            "lifestyle advice", "53y man", "porsche 911", "tips to retire", "personal finance",
+            "how to retire", "credit card debt", "budgeting", "financial planner"
+        ],
+        "Software": [
+            "ui update", "how to install", "tutorial", "best theme"
+        ]
     }
 
     # Merge prompts.py keywords and legacy keywords
@@ -83,6 +116,14 @@ def sort_articles_by_category(articles: list) -> dict:
                 re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
             )
 
+    # Pre-process negative patterns into compiled regex patterns
+    negative_patterns = {category: [] for category in negative_keywords.keys()}
+    for category, keywords in negative_keywords.items():
+        for kw in keywords:
+            negative_patterns[category].append(
+                re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
+            )
+
     # Initialize the output structure
     categorized_articles = {category: [] for category in routing_map.keys()}
 
@@ -94,10 +135,16 @@ def sort_articles_by_category(articles: list) -> dict:
         category_scores = {category: 0 for category in routing_map.keys()}
 
         for category, patterns in category_patterns.items():
+            # Positive match additions
             for pattern in patterns:
-                # Count all non-overlapping occurrences of the pattern
                 matches = len(pattern.findall(text_to_search))
                 category_scores[category] += matches
+
+            # Negative match subtractions (heavily penalize matching noise)
+            if category in negative_patterns:
+                for pattern in negative_patterns[category]:
+                    neg_matches = len(pattern.findall(text_to_search))
+                    category_scores[category] -= neg_matches * 5
 
         # Find the category with the highest score
         best_category = max(category_scores, key=lambda k: category_scores[k])
