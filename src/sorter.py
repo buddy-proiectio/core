@@ -187,3 +187,16 @@ def run_sorter(report_type: str = "full"):
     except KeyboardInterrupt:
         logger.info("Shutdown signal received. Process terminating.")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Sorter Agent")
+    parser.add_argument(
+        "--type",
+        choices=["full", "premarket"],
+        default="full",
+        help="Type of report to sort",
+    )
+    args = parser.parse_args()
+    run_sorter(report_type=args.type)

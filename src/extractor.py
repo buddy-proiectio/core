@@ -14,7 +14,6 @@ import warnings
 import re
 import pytz
 import sys
-import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -363,7 +362,7 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
             # Semantic Deduplication
             unique_articles = []
-            accepted_embeddings: list[torch.Tensor] = []
+            accepted_embeddings: list[typing.Any] = []
             sem_dupes_count = 0
 
             for article in url_unique_articles:
@@ -381,8 +380,8 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                 if accepted_embeddings:
                     # Compute similarity against previously accepted articles using model.similarity
                     # which returns an N x M tensor.
-                    emb_tensor: torch.Tensor = emb
-                    accepted_tensor = torch.stack(accepted_embeddings)
+                    emb_tensor: typing.Any = emb
+                    accepted_tensor = torch.stack(accepted_embeddings)  # type: ignore
                     embedder_any: typing.Any = embedder
                     cos_scores = embedder_any.similarity(emb_tensor, accepted_tensor)[0]
                     if cos_scores.max().item() >= SEMANTIC_SIMILARITY_THRESHOLD:
@@ -727,3 +726,16 @@ def run_extractor(data_dir: typing.Optional[str] = None):
             f"No active tasks were created for date {today_str}. Extraction aborted."
         )
         return None
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Extractor Agent")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Directory containing the sorted JSON files",
+    )
+    args = parser.parse_args()
+    run_extractor(data_dir=args.data_dir)
