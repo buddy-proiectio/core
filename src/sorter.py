@@ -30,58 +30,6 @@ def sort_articles_by_category(articles: list) -> dict:
     from prompts import AGENT_CONFIGS
     import re
 
-    # 1. The Legacy Routing Map (Fallbacks for tickers)
-    legacy_routing_map = {
-        "General": ["FOMC", "CPI", "Fed", "Interest rate", "Gold", "Silver"],
-        "Bitcoin": ["Bitcoin", "BTC"],
-        "Semiconductor": ["Nvidia", "NVDA", "Broadcom", "AVGO", "Micron", "MU", "AMD"],
-        "AI": ["Anthropic", "OpenAI"],
-        "Bio": ["Eli Lilly", "LLY", "Novo Nordisk", "NVO", "FDA"],
-        "Aerospace": ["SpaceX", "NASA"],
-        "Software": [
-            "Palantir",
-            "PLTR",
-            "Microsoft",
-            "MSFT",
-            "Oracle",
-            "ORCL",
-        ],
-        "Power & Grid": [
-            "GE Vernova",
-            "GEV",
-            "Constellation Energy",
-            "CEG",
-            "Vistra",
-            "VST",
-            "SMR",
-            "PPA",
-        ],
-        "Robotics & Autonomy": [
-            "Tesla",
-            "TSLA",
-            "Symbotic",
-            "SYM",
-            "FSD",
-        ],
-        "Others": [
-            "Apple",
-            "AAPL",
-            "Amazon",
-            "AMZN",
-            "Walmart",
-            "WMT",
-            "Meta",
-            "META",
-            "Google",
-            "GOOG",
-            "GOOGL",
-            "Netflix",
-            "NFLX",
-            "Costco",
-            "COST",
-        ],
-    }
-
     # Negative keywords list to penalize non-investment/personal-finance noise
     negative_keywords = {
         "General": [
@@ -95,17 +43,11 @@ def sort_articles_by_category(articles: list) -> dict:
         ]
     }
 
-    # Merge prompts.py keywords and legacy keywords
+    # Load categories and keywords directly from prompts.py configuration
     routing_map = {
         category: list(config.get("keywords", []))
         for category, config in AGENT_CONFIGS.items()
     }
-    for category, keywords in legacy_routing_map.items():
-        if category not in routing_map:
-            routing_map[category] = []
-        for kw in keywords:
-            if kw.lower() not in [k.lower() for k in routing_map[category]]:
-                routing_map[category].append(kw)
 
     # Pre-process the routing map into compiled regex patterns
     category_patterns = {category: [] for category in routing_map.keys()}
