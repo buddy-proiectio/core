@@ -45,6 +45,7 @@ AGENT_CONFIGS = {
         4. Forward Guidance: Direct quotes from Fed officials and hawkish/dovish semantic pivots.
         5. Structural Labor Shifts: Non-Farm Payrolls (NFP), unemployment rates, labor force participation, and wage growth percentages.
         6. Macro Housing Indicators: National average 30-year fixed mortgage rates, MBA mortgage application indexes, and Case-Shiller index growth. (DO NOT extract individual refinancing tutorials, home shopping guides, or mortgage calculators).
+        7. Real Assets & Safe Havens: Gold and Silver spot prices, physical gold/silver ETF flows, and central bank gold accumulation metrics as indicators of fiat currency debasement.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
             industry_focus="US Macroeconomics & Federal Reserve Policy",
@@ -104,8 +105,13 @@ AGENT_CONFIGS = {
             "case-shiller",
             "delinquency",
             "foreclosure",
+            "gold",
+            "silver",
+            "gld",
+            "slv",
         ],
     },
+    
     # 2) Bitcoin (Bitcoin & Institutional Liquidity)
     "Bitcoin": {
         "role": "Exact Text Extraction Algorithm: Bitcoin & Institutional Liquidity",
@@ -116,7 +122,6 @@ AGENT_CONFIGS = {
         4. Accounting Rules & Regs: FASB fair value accounting adoption metrics and SEC regulatory approval filings.
         5. Sovereign Strategic Reserves: Nation-state balance sheet purchases and sovereign wealth fund allocations.
         6. Supply & Fundamentals: Halving impacts, structural supply constraints, and global hash rate distribution.
-        7. Hard Asset Benchmarks: Gold and Silver price action, physical gold/silver ETF flows, and supply/demand dynamics for comparative analysis.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
             industry_focus="institutional money flows and on-chain facts",
@@ -144,8 +149,6 @@ AGENT_CONFIGS = {
             "l2",
             "rwa",
             "tokenization",
-            "gold",
-            "silver",
             "saylor",
             "michael saylor",
             "fink",

@@ -32,8 +32,8 @@ def sort_articles_by_category(articles: list) -> dict:
 
     # 1. The Legacy Routing Map (Fallbacks for tickers)
     legacy_routing_map = {
-        "General": ["FOMC", "CPI", "Fed", "Interest rate"],
-        "Bitcoin": ["Bitcoin", "BTC", "Gold", "Silver"],
+        "General": ["FOMC", "CPI", "Fed", "Interest rate", "Gold", "Silver"],
+        "Bitcoin": ["Bitcoin", "BTC"],
         "Semiconductor": ["Nvidia", "NVDA", "Broadcom", "AVGO", "Micron", "MU", "AMD"],
         "AI": ["Anthropic", "OpenAI"],
         "Bio": ["Eli Lilly", "LLY", "Novo Nordisk", "NVO", "FDA"],
