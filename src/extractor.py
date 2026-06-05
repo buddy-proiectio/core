@@ -15,6 +15,7 @@ import re
 import pytz
 import sys
 import argparse
+import uuid
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -338,7 +339,7 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
 
     # 3. Loop through these categories
     for category in categories:
-        safe_category = category.replace(" ", "_")
+        safe_category = category.replace(" ", "_").replace("/", "_")
         filename = f"{safe_category}_sorted_{today_str}.json"
         filepath = os.path.join(data_dir, filename)
 
@@ -452,10 +453,11 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                     f"--- END ARTICLE ---\n"
                 )
 
-                # Construct task description via template injection
-                task_description = config["task_description_template"].format(
-                    input_text=input_text
-                )
+                # Inject a unique salt to bust Ollama prefix caching and force fresh context isolation
+                cache_buster = f"Extraction Session Salt: {uuid.uuid4().hex}\n"
+                task_description = cache_buster + config[
+                    "task_description_template"
+                ].format(input_text=input_text)
 
                 active_tasks.append(
                     (category, system_prompt, task_description, article)
@@ -539,6 +541,7 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                             "num_predict": 1500,
                             "temperature": 0.0,
                             "top_p": 0.1,
+                            "num_keep": 0,
                         },
                     }
 

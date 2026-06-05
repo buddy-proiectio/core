@@ -176,7 +176,7 @@ def run_sorter(report_type: str = "full"):
                 continue
 
             # Clean the category name for safe file paths (spaces replaced with underscores)
-            safe_category = category.replace(" ", "_")
+            safe_category = category.replace(" ", "_").replace("/", "_")
             out_filename = f"{safe_category}_sorted_{date_str}.json"
             out_path = os.path.join(data_dir, out_filename)
 

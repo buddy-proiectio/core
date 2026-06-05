@@ -1,7 +1,5 @@
 def build_backstory(industry_focus: str, ignore_rule: str) -> str:
-    ignore_section = (
-        f"\n        - ALSO IGNORE {ignore_rule}." if ignore_rule else ""
-    )
+    ignore_section = f"\n        - ALSO IGNORE {ignore_rule}." if ignore_rule else ""
     return f"""You are a deterministic, zero-creativity extraction engine for {industry_focus}.
 
         [CRITICAL GATING RULE]
@@ -39,7 +37,7 @@ def build_task_template(
 AGENT_CONFIGS = {
     # 1) General (US Macroeconomics & Federal Reserve Policy)
     "General": {
-        "role": "Exact Text Extraction Algorithm: US Macroeconomics & Federal Reserve Policy",
+        "role": "Exact Text Extraction Algorithm: US Macroeconomics, Federal Policy & Regulations",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
         1. Inflation Trajectories: CPI, PCE, Core PCE, and Supercore inflation month-over-month or YoY percentage changes.
         2. Fed Decisions & Projections: FOMC rate pause duration (at the 3.75% upper bound), dot plot voting distributions, and QT limits.
@@ -48,9 +46,10 @@ AGENT_CONFIGS = {
         5. Structural Labor Shifts: Non-Farm Payrolls (NFP), unemployment rates, labor force participation, and wage growth percentages.
         6. Macro Housing Indicators: National average 30-year fixed mortgage rates, MBA mortgage application indexes, and Case-Shiller index growth. (DO NOT extract individual refinancing tutorials, home shopping guides, or mortgage calculators).
         7. Real Assets & Safe Havens: Gold and Silver spot prices, physical gold/silver ETF flows, and central bank gold accumulation metrics as indicators of fiat currency debasement.
+        8. Macro Government Policies & Regulations: Trade tariffs, trade war metrics, antitrust/regulatory decisions affecting macro industries, and tax-deferred/tax-free account regulations (e.g., Roth IRA tax implications, BDC tax-free treatments).
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
-            industry_focus="US Macroeconomics & Federal Reserve Policy",
+            industry_focus="US Macroeconomics, Federal Policy & Regulations",
             ignore_rule="speculative price predictions, technical analysis (support/resistance), or emotional market sentiment",
         ),
         "task_description_template": build_task_template(),
@@ -82,8 +81,8 @@ AGENT_CONFIGS = {
             "cbdc": 8,
             "debt limit": 8,
             "fiscal": 5,
-            "tariff": 8,
-            "trade war": 8,
+            "tariff": 10,
+            "trade war": 10,
             "fomc": 10,
             "quantitative easing": 10,
             "qe": 10,
@@ -107,13 +106,20 @@ AGENT_CONFIGS = {
             "case-shiller": 10,
             "delinquency": 5,
             "foreclosure": 8,
-            "gold": 3,
-            "silver": 3,
+            "gold": 5,
+            "silver": 5,
             "gld": 8,
             "slv": 8,
+            "roth ira": 10,
+            "ira": 5,
+            "tax-free": 8,
+            "tax-deferred": 8,
+            "antitrust": 10,
+            "anti-trust": 10,
+            "regulation": 5,
+            "policy": 5,
         },
     },
-    
     # 2) Bitcoin (Bitcoin & Institutional Liquidity)
     "Bitcoin": {
         "role": "Exact Text Extraction Algorithm: Bitcoin & Institutional Liquidity",
@@ -170,7 +176,6 @@ AGENT_CONFIGS = {
             "supply squeeze": 5,
         },
     },
-    
     # 3) Semiconductor (Semiconductor & Supply Chain)
     "Semiconductor": {
         "role": "Exact Text Extraction Algorithm: Semiconductor & Supply Chain",
@@ -213,23 +218,37 @@ AGENT_CONFIGS = {
             "supply chain": 2,
             "fab": 5,
             "memory": 3,
+            "nvidia": 10,
+            "nvda": 10,
+            "broadcom": 10,
+            "avgo": 10,
+            "intel": 10,
+            "intc": 10,
+            "amd": 10,
+            "tsmc": 10,
+            "tsm": 10,
+            "qualcomm": 10,
+            "qcom": 10,
+            "samsung": 10,
+            "sk hynix": 10,
+            "hynix": 10,
+            "micron": 10,
+            "asml": 10,
         },
     },
-    
-    # 4) AI (AI Models & Platforms)
-    "AI": {
-        "role": "Exact Text Extraction Algorithm: AI & Generative Models",
+    # 4) AI/Robotics/EV (Artificial Intelligence, Robotics & Electric Vehicles)
+    "AI/Robotics/EV": {
+        "role": "Exact Text Extraction Algorithm: AI, Robotics & EV",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
-        1. Model Compute Scales: Training parameters, dataset token sizes, multi-million dollar training run costs, and open-weights release dates.
-        2. Inference Cost Reductions: API pricing per million tokens, time-to-first-token (TTFT) latency, and compute cost deflation percentages.
-        3. Enterprise ROI Metrics: B2B corporate agent deployment conversion rates, corporate productivity gains (hours saved), and software API volumes.
-        4. Edge AI Specs: Local execution requirements for AI PCs/Smartphones (e.g., NPU TOPS, minimum unified RAM gigabytes).
-        5. Cluster Infrastructure: Hyper-scalers AI cluster node counts (e.g., number of GPUs in a single cluster like Colossus) and networking bandwidth speeds.
-        6. Startup Deal flows: High-profile AI startup funding rounds (e.g., OpenAI, Anthropic, xAI), private valuations, and AI IPO registrations.
+        1. AI Model Scales & Costs: Training parameters, dataset token sizes, training run costs, and API pricing per million tokens.
+        2. Enterprise ROI & Edge AI Specs: Corporate agent deployment conversion rates, productivity gains, and local execution hardware requirements (e.g., NPU TOPS).
+        3. Autonomous Systems & Fleet Operations: Cumulative FSD (Full Self-Driving) miles driven, average miles between disengagements, and operating Robotaxi vehicle counts.
+        4. Humanoid & Industrial Robotics: Factory floor humanoid deployments, unit manufacturing costs, and logistics/warehousing automation order backlogs.
+        5. EV & Advanced Mobility Hardware: EV production volume and deliveries, battery cell costs ($/kWh), solid-state or next-gen battery development, and advanced hybrid/electric vehicle platform architectures.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
-            industry_focus="AI industry data",
-            ignore_rule="ethical debates, generic future outlooks, or technical analysis",
+            industry_focus="AI, robotics, autonomous systems, and advanced electric mobility hardware",
+            ignore_rule="ethical debates, generic future outlooks, speculative consumer product release hype, retail auto sales dealer promotions, or personal stock tips",
         ),
         "task_description_template": build_task_template(),
         "keywords": {
@@ -266,11 +285,42 @@ AGENT_CONFIGS = {
             "open source": 2,
             "parameters": 5,
             "scaling law": 8,
+            "openai": 10,
+            "anthropic": 10,
+            "xai": 10,
+            "suno": 8,
+            "runway": 8,
+            "palantir": 10,
+            "pltr": 10,
+            "fsd": 10,
+            "full self-driving": 10,
+            "robotaxi": 10,
+            "humanoid": 10,
+            "humanoid robot": 10,
+            "optimus": 10,
+            "figure ai": 10,
+            "agv": 10,
+            "automated guided vehicle": 10,
+            "warehouse automation": 8,
+            "industrial automation": 8,
+            "battery cell": 8,
+            "solid-state battery": 10,
+            "robot": 8,
+            "robotics": 8,
+            "autonomy": 5,
+            "autonomous driving": 10,
+            "disengagement": 10,
+            "tesla": 10,
+            "tsla": 10,
+            "ev": 10,
+            "electric vehicle": 10,
+            "autonomous vehicle": 10,
+            "self-driving": 10,
+            "lithium": 5,
         },
     },
-    
-    # 5) Power & Grid (Power Infrastructure & Energy)
-    "Power & Grid": {
+    # 5) Power/Grid (Power Infrastructure & Energy)
+    "Power/Grid": {
         "role": "Exact Text Extraction Algorithm: Power Infrastructure & Energy",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
         1. Power Purchase Agreements: Megawatts (MW) or Gigawatts (GW) of energy secured under contract by tech companies, and contract pricing per megawatt-hour ($/MWh).
@@ -308,45 +358,7 @@ AGENT_CONFIGS = {
             "gwh": 8,
         },
     },
-    
-    # 6) Robotics & Autonomy (Robotics & Autonomous Systems)
-    "Robotics & Autonomy": {
-        "role": "Exact Text Extraction Algorithm: Robotics & Autonomous Systems",
-        "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
-        1. Autonomous Driving Miles: Cumulative FSD (Full Self-Driving) miles driven, average miles between disengagements, and safety performance comparisons.
-        2. Robotaxi Fleet Operations: Operating Robotaxi vehicle counts, daily active autonomous rides, and regulatory permitting approvals.
-        3. Humanoid Robot Pilots: Factory floor humanoid deployments, unit manufacturing costs, payload capacities, and hand dexterity degrees of freedom.
-        4. Logistics & Warehousing Automation: Automated guided vehicle (AGV) orders, robotic warehouse system backlogs (e.g., Symbotic metrics), and throughput efficiency gains.
-        5. EV Batteries & Supply Chain: Next-gen battery cell costs ($/kWh), solid-state battery development, and localization metrics.
-        If a sentence contains any of these KPIs, extract it entirely.""",
-        "backstory": build_backstory(
-            industry_focus="robotics, autonomous systems, and advanced mobility hardware",
-            ignore_rule="speculative consumer product release hype or personal stock tips",
-        ),
-        "task_description_template": build_task_template(),
-        "keywords": {
-            "fsd": 10,
-            "full self-driving": 10,
-            "robotaxi": 10,
-            "humanoid": 10,
-            "humanoid robot": 10,
-            "optimus": 10,
-            "figure ai": 10,
-            "agv": 10,
-            "automated guided vehicle": 10,
-            "warehouse automation": 8,
-            "industrial automation": 8,
-            "battery cell": 8,
-            "solid-state battery": 10,
-            "robot": 8,
-            "robotics": 8,
-            "autonomy": 5,
-            "autonomous driving": 10,
-            "disengagement": 10,
-        },
-    },
-    
-    # 7) Software (Enterprise Software & Cloud Services)
+    # 6) Software (Enterprise Software & Cloud Services)
     "Software": {
         "role": "Exact Text Extraction Algorithm: Enterprise Software & Cloud Services",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
@@ -384,9 +396,80 @@ AGENT_CONFIGS = {
             "zero trust": 10,
             "endpoint security": 10,
             "database": 5,
+            "google": 10,
+            "alphabet": 10,
+            "googl": 10,
+            "goog": 10,
+            "meta": 10,
+            "facebook": 10,
+            "amazon": 10,
+            "amzn": 10,
+            "apple": 10,
+            "aapl": 10,
+            "microsoft": 10,
+            "msft": 10,
+            "oracle": 10,
+            "orcl": 10,
+            "salesforce": 10,
+            "crm": 10,
+            "service now": 10,
+            "now": 8,
+            "crowdstrike": 10,
+            "crwd": 10,
+            "snowflake": 10,
+            "snow": 10,
         },
     },
-    
+    # 7) Aerospace (Aerospace, Space Economy & Defense)
+    "Aerospace": {
+        "role": "Exact Text Extraction Algorithm: Aerospace & Space Economy",
+        "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
+        1. Launch Cost & Freq: Cost per launch payload kilogram ($/kg), rocket booster reuse cycles, and annual/monthly launch counts.
+        2. Satellite Broadband (Starlink): Active subscribers, monthly average revenue per user (ARPU), and total satellite constellations.
+        3. Autonomous Defense Systems: DoD contract award values for AI-driven drone swarms, tactical hypersonic speed metrics, and hardware quantities.
+        4. Military Software Backlogs: Palantir and Anduril multi-year contract values and government defense budget allocations.
+        5. Commercial aviation backlogs: Boeing and Airbus commercial jet order backlog years, monthly production rates, and delivery delays.
+        6. Defense Consolidation: Aerospace & defense mergers & acquisitions (M&A), defense contractor IPOs, and venture funding for defense tech startups.
+        If a sentence contains any of these KPIs, extract it entirely.""",
+        "backstory": build_backstory(
+            industry_focus="aerospace industry data",
+            ignore_rule="generic space exploration enthusiasm or stock price predictions",
+        ),
+        "task_description_template": build_task_template(),
+        "keywords": {
+            "launch": 5,
+            "payload": 8,
+            "starlink": 10,
+            "nasa": 8,
+            "dod": 8,
+            "tam": 2,
+            "defense": 5,
+            "backlog": 5,
+            "orbit": 8,
+            "drone": 8,
+            "hypersonic": 10,
+            "artemis": 10,
+            "lunar": 8,
+            "space": 5,
+            "satellite": 8,
+            "leo": 8,
+            "rocket": 8,
+            "missile": 8,
+            "defense budget": 10,
+            "pentagon": 8,
+            "procurement": 5,
+            "aviation": 5,
+            "aero": 5,
+            "military": 5,
+            "spacex": 10,
+            "blue origin": 10,
+            "boeing": 10,
+            "ba": 10,
+            "airbus": 10,
+            "anduril": 10,
+            "defense contractor": 8,
+        },
+    },
     # 8) Bio (Biotechnology & Pharmaceuticals)
     "Bio": {
         "role": "Exact Text Extraction Algorithm: Biotechnology & Pharmaceuticals",
@@ -442,123 +525,86 @@ AGENT_CONFIGS = {
             "orphan drug": 8,
         },
     },
-    
-    # 9) Aerospace (Aerospace, Space Economy & Defense)
-    "Aerospace": {
-        "role": "Exact Text Extraction Algorithm: Aerospace & Space Economy",
+    # 9) Consumer/Retail (Consumer Spending, E-Commerce & Retail)
+    "Consumer/Retail": {
+        "role": "Exact Text Extraction Algorithm: Consumer Spending, E-Commerce & Retail",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
-        1. Launch Cost & Freq: Cost per launch payload kilogram ($/kg), rocket booster reuse cycles, and annual/monthly launch counts.
-        2. Satellite Broadband (Starlink): Active subscribers, monthly average revenue per user (ARPU), and total satellite constellations.
-        3. Autonomous Defense Systems: DoD contract award values for AI-driven drone swarms, tactical hypersonic speed metrics, and hardware quantities.
-        4. Military Software Backlogs: Palantir and Anduril multi-year contract values and government defense budget allocations.
-        5. Commercial aviation backlogs: Boeing and Airbus commercial jet order backlog years, monthly production rates, and delivery delays.
-        6. Defense Consolidation: Aerospace & defense mergers & acquisitions (M&A), defense contractor IPOs, and venture funding for defense tech startups.
+        1. E-Commerce & Retail Sales: Same-store sales (SSS) growth, comparable store sales (comps), and retail operating margins for major retail brands.
+        2. Consumer Spending Trends: Direct metrics on consumer discretionary spend, household balance sheet changes, and metropolitan delivery expansion.
+        3. E-Commerce platform activity: GMV (Gross Merchandise Value) growth, merchant subscription revenues, and active customer acquisition costs.
+        4. Logistics & Supply Chain: Metropolitan fulfillment center capacity, same-day delivery penetration, and inventory turn ratios.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
-            industry_focus="aerospace industry data",
-            ignore_rule="generic space exploration enthusiasm or stock price predictions",
+            industry_focus="consumer, retail, and e-commerce industry data",
+            ignore_rule="retail product promotional discounts, coupon codes, individual consumer shopping reviews, or personal stock tips",
         ),
         "task_description_template": build_task_template(),
         "keywords": {
-            "launch": 5,
-            "payload": 8,
-            "starlink": 10,
-            "nasa": 8,
-            "dod": 8,
-            "tam": 2,
-            "defense": 5,
-            "backlog": 5,
-            "orbit": 8,
-            "drone": 8,
-            "hypersonic": 10,
-            "artemis": 10,
-            "lunar": 8,
-            "space": 5,
-            "satellite": 8,
-            "leo": 8,
-            "rocket": 8,
-            "missile": 8,
-            "defense budget": 10,
-            "pentagon": 8,
-            "procurement": 5,
-            "aviation": 5,
-            "aero": 5,
-            "military": 5,
+            "walmart": 10,
+            "wmt": 10,
+            "costco": 10,
+            "cost": 10,
+            "target": 10,
+            "tgt": 10,
+            "lulu": 10,
+            "lululemon": 10,
+            "nike": 10,
+            "nke": 10,
+            "mcdonald's": 10,
+            "mcd": 10,
+            "coca-cola": 10,
+            "coca cola": 10,
+            "ko": 10,
+            "starbucks": 10,
+            "sbux": 10,
+            "macy's": 10,
+            "macy": 10,
+            "retail": 10,
+            "retailer": 10,
+            "consumer spending": 10,
+            "same-store sales": 10,
+            "comps": 8,
+            "ecommerce": 8,
+            "shopify": 10,
+            "shop": 8,
+            "consumer sentiment": 5,
+            "brand": 5,
+            "apparel": 8,
+            "restaurant": 8,
+            "grocery": 8,
         },
     },
-    
-    # 10) Others (Big Tech Platforms, Consumer, Global Supply Chains & Valuation)
+    # 10) Others (Miscellaneous Industries & General Business Dynamics)
     "Others": {
-        "role": "Exact Text Extraction Algorithm: Mega-Cap Tech & Consumer Platforms",
+        "role": "Exact Text Extraction Algorithm: Miscellaneous Industries & General Business Dynamics",
         "goal": """Your absolute goal is to scan the text and strictly COPY AND PASTE the exact original sentences containing institutional-level hard data or definitive statements regarding:
-        1. Big Tech Platform Revenues: Advertising revenue growth for Meta/Google, ad impression CPM/CPC rate changes, social active users (DAU/MAU), and Apple iPhone unit shipments and Services segment gross margins.
-        2. E-Commerce & Retail: Amazon retail GMV growth, Shopify GMV, same-store sales (SSS) growth, and operating margins for Walmart, Costco, or Target.
-        3. Consumer Credit & Macro Consumption: Credit card delinquency rates, auto loan default rates, and overall retail sales percentage changes.
-        4. Logistics & Supply Chain: Same-day delivery metropolitan coverage, inventory turn ratios, and reshoring/nearshoring relocation metrics (e.g., China+1).
-        5. Shareholder Capital Returns: Free Cash Flow (FCF) yields, share buyback sizes, and dividend distribution plans.
-        6. Corporate Governance & Regulations: Major antitrust trial rulings, regulatory fines, and shareholder activist voting metrics.
+        1. Miscellaneous Industry Performance: Traditional manufacturing, real estate (non-data center), food/beverage retail (excluding mega brands), and materials.
+        2. General Corporate Actions: Multi-industry business announcements, generic cost-cutting, general board/executive changes, and general shareholder distributions not mapped elsewhere.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
-            industry_focus="mega-cap and consumer industry data",
-            ignore_rule="speculative price predictions, emotional sentiment, or CEO personal gossip",
+            industry_focus="general corporate and miscellaneous industry data",
+            ignore_rule="speculative price predictions, emotional market sentiment, or CEO personal gossip",
         ),
         "task_description_template": build_task_template(),
         "keywords": {
             "delivery": 1,
             "shipment": 1,
-            "fcf": 2,
-            "free cash flow": 2,
             "margin": 1,
             "revenue": 1,
             "eps": 1,
             "earnings": 1,
             "net income": 1,
+            "operating income": 1,
             "gross margin": 1,
             "operating margin": 1,
-            "capital expenditures": 1,
-            "merger": 1,
-            "logistics": 2,
-            "supply chain": 1,
             "reshoring": 5,
-            "robotics": 1,
-            "automation": 1,
-            "buyback": 5,
-            "dividend": 5,
-            "robotaxi": 1,
-            "fsd": 1,
-            "optimus": 1,
-            "figure ai": 1,
-            "consumer spending": 5,
-            "retail": 2,
-            "ecommerce": 5,
-            "ev": 5,
-            "electric vehicle": 5,
-            "iphone": 8,
-            "services revenue": 5,
-            "ad revenue": 5,
-            "advertising": 5,
-            "capex": 1,
-            "operating income": 2,
-            "cost cutting": 5,
-            "layoffs": 5,
-            "shareholder return": 5,
-            "ipo": 1,
-            "m&a": 1,
-            "funding": 1,
-            "valuation": 1,
-            "acquisition": 1,
-            "anti-trust": 5,
-            "genset": 5,
-            "gensets": 5,
-            "turbine": 5,
-            "reciprocating engine": 5,
-            "power grid": 1,
-            "electricity": 1,
-            "utility": 1,
-            "utilities": 1,
             "china+1": 5,
             "nearshoring": 5,
-            "antitrust": 5,
+            "layoffs": 5,
+            "cost cutting": 5,
+            "buyback": 2,
+            "dividend": 2,
+            "shareholder return": 2,
         },
     },
 }

@@ -305,6 +305,11 @@ def format_content(content: str, weekly_schedule_data: Optional[list] = None) ->
     # 4. Escape raw dollars (except those already escaped) to prevent LaTeX rendering issues
     formatted_text = re.sub(r"(?<!\\)\$", r"\$", formatted_text)
 
+    # 5. Format category slashes with spaces for better visual representation in final reports
+    formatted_text = formatted_text.replace("AI/Robotics/EV", "AI / Robotics / EV")
+    formatted_text = formatted_text.replace("Power/Grid", "Power / Grid")
+    formatted_text = formatted_text.replace("Consumer/Retail", "Consumer / Retail")
+
     return formatted_text
 
 
