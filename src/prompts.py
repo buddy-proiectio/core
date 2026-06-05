@@ -116,7 +116,7 @@ AGENT_CONFIGS = {
         4. Accounting Rules & Regs: FASB fair value accounting adoption metrics and SEC regulatory approval filings.
         5. Sovereign Strategic Reserves: Nation-state balance sheet purchases and sovereign wealth fund allocations.
         6. Supply & Fundamentals: Halving impacts, structural supply constraints, and global hash rate distribution.
-        7. Hard Asset Benchmarks: Gold and Silver price action, ETF flows, and supply/demand dynamics for comparative analysis.
+        7. Hard Asset Benchmarks: Gold and Silver price action, physical gold/silver ETF flows, and supply/demand dynamics for comparative analysis.
         If a sentence contains any of these KPIs, extract it entirely.""",
         "backstory": build_backstory(
             industry_focus="institutional money flows and on-chain facts",
@@ -124,7 +124,11 @@ AGENT_CONFIGS = {
         ),
         "task_description_template": build_task_template(),
         "keywords": [
-            "etf",
+            "bitcoin etf",
+            "btc etf",
+            "crypto etf",
+            "ethereum etf",
+            "eth etf",
             "bitcoin",
             "btc",
             "ethereum",
@@ -160,8 +164,8 @@ AGENT_CONFIGS = {
             "microstrategy",
             "mstr",
             "blackrock",
-            "options",
-            "liquidation",
+            "crypto options",
+            "crypto liquidation",
             "on-chain",
             "tether",
             "usdt",
