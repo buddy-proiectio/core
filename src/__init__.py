@@ -59,12 +59,12 @@ def pull_data_from_cloud(report_type: str = "full"):
 
     if report_type == "premarket":
         remote_file = f"/home/ubuntu/data/premarket_news_{today}.json"
-        local_dir = "/Users/taehoonkwon/workspaces/buddy-core/data"
+        local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/premarket_news_{today}.json"
     else:
         # Both 'full' and 'incremental' use the daily_news file
         remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
-        local_dir = "/Users/taehoonkwon/workspaces/buddy-core/data"
+        local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/daily_news_{today}.json"
 
     os.makedirs(local_dir, exist_ok=True)
@@ -288,7 +288,7 @@ def run_all(report_type: str = "full"):
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
-                # _cleanup_data_files(data_dir)
+                _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:
                 logger.info(
