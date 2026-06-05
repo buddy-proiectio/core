@@ -14,6 +14,7 @@ import warnings
 import re
 import pytz
 import sys
+import argparse
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +24,6 @@ import torch
 import typing
 import requests
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
-from transformers.utils import logging as hf_logging
 from sentence_transformers import SentenceTransformer
 
 from shared.shared_logger import setup_logger
@@ -46,7 +46,6 @@ logger = setup_logger(LOG_FILE, __name__)
 
 disable_progress_bars()
 hf_hub_logging.set_verbosity_error()
-hf_logging.set_verbosity_error()
 
 
 def strip_captions(text: str) -> str:
@@ -263,7 +262,7 @@ def strip_tables(text: str) -> str:
     return "\n".join(filtered_lines)
 
 
-def run_extractor(data_dir: typing.Optional[str] = None):
+def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool]:
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
     Scans for category-specific JSON files, spins up a direct LLM execution pipeline
@@ -290,7 +289,7 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
     # 2.5 Load incremental state
     state_filename = os.path.join(data_dir, f"extracted_state_{today_str}.json")
-    state_data = {
+    state_data: dict[str, typing.Any] = {
         "extracted_urls": [],
         "category_normal_outputs": {cat: [] for cat in categories},
         "category_sec_outputs": {cat: [] for cat in categories},
@@ -309,13 +308,25 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
     extracted_urls_set = set(state_data["extracted_urls"])
 
-    extracted_urls: list = typing.cast(list, state_data["extracted_urls"])
-    category_sec_outputs: dict = typing.cast(
-        dict, state_data.get("category_sec_outputs", {})
+    extracted_urls: list[str] = typing.cast(list[str], state_data["extracted_urls"])
+    if "category_sec_outputs" not in state_data:
+        state_data["category_sec_outputs"] = {}
+    if "category_normal_outputs" not in state_data:
+        state_data["category_normal_outputs"] = {}
+
+    category_sec_outputs: dict[str, list[str]] = typing.cast(
+        dict[str, list[str]], state_data["category_sec_outputs"]
     )
-    category_normal_outputs: dict = typing.cast(
-        dict, state_data.get("category_normal_outputs", {})
+    category_normal_outputs: dict[str, list[str]] = typing.cast(
+        dict[str, list[str]], state_data["category_normal_outputs"]
     )
+
+    # Ensure newly added categories exist in the state dictionaries
+    for cat in categories:
+        if cat not in category_sec_outputs:
+            category_sec_outputs[cat] = []
+        if cat not in category_normal_outputs:
+            category_normal_outputs[cat] = []
 
     # Initialize lightweight embedding model globally for the run
     logger.info(
@@ -467,9 +478,11 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
         # Use the state loaded earlier
         category_normal_outputs = typing.cast(
-            dict, state_data["category_normal_outputs"]
+            dict[str, list[str]], state_data["category_normal_outputs"]
         )
-        category_sec_outputs = typing.cast(dict, state_data["category_sec_outputs"])
+        category_sec_outputs = typing.cast(
+            dict[str, list[str]], state_data["category_sec_outputs"]
+        )
 
         try:
             url = "http://127.0.0.1:11434/api/chat"
@@ -713,9 +726,7 @@ def run_extractor(data_dir: typing.Optional[str] = None):
                         total_facts += 1
 
         if total_facts == 0:
-            logger.info(
-                "Extraction finished, but NO facts were found."
-            )
+            logger.info("Extraction finished, but NO facts were found.")
         else:
             logger.info(
                 f"Extraction complete! Unique, filtered output saved to: {output_filename}"
@@ -730,7 +741,6 @@ def run_extractor(data_dir: typing.Optional[str] = None):
 
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser(description="Extractor Agent")
     parser.add_argument(
         "--data-dir",
