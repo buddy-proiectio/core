@@ -45,18 +45,25 @@ def sort_articles_by_category(articles: list) -> dict:
 
     # Load categories and keywords directly from prompts.py configuration
     routing_map = {
-        category: list(config.get("keywords", []))
+        category: config.get("keywords", {})
         for category, config in AGENT_CONFIGS.items()
     }
 
-    # Pre-process the routing map into compiled regex patterns
+    # Pre-process the routing map into compiled regex patterns with weights
     category_patterns = {category: [] for category in routing_map.keys()}
-    for category, keywords in routing_map.items():
-        for kw in keywords:
-            # Word boundary regex for exact term match (case insensitive)
-            category_patterns[category].append(
-                re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
-            )
+    for category, keywords_data in routing_map.items():
+        if isinstance(keywords_data, dict):
+            for kw, weight in keywords_data.items():
+                # Word boundary regex for exact term match (case insensitive)
+                category_patterns[category].append(
+                    (re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE), weight)
+                )
+        else:
+            # Fallback if list is provided
+            for kw in keywords_data:
+                category_patterns[category].append(
+                    (re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE), 1)
+                )
 
     # Pre-process negative patterns into compiled regex patterns
     negative_patterns = {category: [] for category in negative_keywords.keys()}
@@ -73,14 +80,14 @@ def sort_articles_by_category(articles: list) -> dict:
     for article in articles:
         text_to_search = f"{article.get('title', '')} | {article.get('content', '')}"
 
-        # Calculate a score for each category based on keyword frequencies
+        # Calculate a score for each category based on keyword frequencies and weights
         category_scores = {category: 0 for category in routing_map.keys()}
 
         for category, patterns in category_patterns.items():
             # Positive match additions
-            for pattern in patterns:
+            for pattern, weight in patterns:
                 matches = len(pattern.findall(text_to_search))
-                category_scores[category] += matches
+                category_scores[category] += matches * weight
 
             # Negative match subtractions (heavily penalize matching noise)
             if category in negative_patterns:
@@ -89,10 +96,15 @@ def sort_articles_by_category(articles: list) -> dict:
                     category_scores[category] -= neg_matches * 5
 
         # Find the category with the highest score
-        best_category = max(category_scores, key=lambda k: category_scores[k])
+        max_score = max(category_scores.values())
 
-        # If there's at least one match, assign to the best scoring category. Otherwise, fallback to 'Others'
-        if category_scores[best_category] > 0:
+        if max_score > 0:
+            # Get all categories that achieved the max score
+            candidates = [cat for cat, score in category_scores.items() if score == max_score]
+            # Prioritize specific categories over 'Others' if there is a tie
+            if len(candidates) > 1 and "Others" in candidates:
+                candidates.remove("Others")
+            best_category = candidates[0]
             categorized_articles[best_category].append(article)
         else:
             categorized_articles["Others"].append(article)
