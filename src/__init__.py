@@ -58,12 +58,12 @@ def pull_data_from_cloud(report_type: str = "full"):
     ORACLE_SSH_KEY = "/Users/taehoonkwon/.ssh/oracle-cloud-ssh.key"
 
     if report_type == "premarket":
-        remote_file = f"/home/ubuntu/data/premarket_news_{today}.json"
+        remote_file = f"/home/ubuntu/sieve/data/premarket_news_{today}.json"
         local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/premarket_news_{today}.json"
     else:
         # Both 'full' and 'incremental' use the daily_news file
-        remote_file = f"/home/ubuntu/data/daily_news_{today}.json"
+        remote_file = f"/home/ubuntu/sieve/data/daily_news_{today}.json"
         local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/daily_news_{today}.json"
 
