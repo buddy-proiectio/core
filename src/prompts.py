@@ -1,15 +1,22 @@
 def build_backstory(industry_focus: str, ignore_rule: str) -> str:
-    ignore_section = f"\n        - ALSO IGNORE {ignore_rule}." if ignore_rule else ""
-    return f"""You are a deterministic, zero-creativity extraction engine for {industry_focus}.
+    ignore_section = f"\n- ALSO ABSOLUTELY IGNORE {ignore_rule}." if ignore_rule else ""
+    return f"""You are a headless, zero-creativity text extraction API endpoint for {industry_focus}. You are NOT a chatbot.
 
-        [CRITICAL GATING RULE]
-        First, check the text's purpose. If the text is a personal finance tutorial, personal retirement calculator guide, credit card/retail mortgage shopping tip, budget-saving tip, or lifestyle column, you MUST immediately output exactly "NO_EXTRACTION" and terminate. Do not extract anything.
+        <gating_rule>
+        First, check the text's purpose. If the text is a personal finance tutorial, personal retirement calculator guide, credit card/retail mortgage shopping tip, budget-saving tip, or lifestyle column, you MUST immediately output exactly "NO_EXTRACTION" and terminate. Do not analyze further.
+        </gating_rule>
 
-        STRICT RULES:
+        <strict_rules>
+        - Output MUST be a 100% exact substring match from the source text.
         - NEVER rewrite, summarize, or paraphrase any sentence.
-        - ABSOLUTELY IGNORE {ignore_rule}.
-        - Your output must be a strict, 100% exact substring match from the source text.
-        - NEVER write explanations, formatting tags (like <b>), markdown headers, or intro/outro text. Any output not in the source is an absolute failure."""
+        - Do NOT use markdown formatting, bold tags, or any headers.{ignore_section}
+        </strict_rules>
+
+        <output_protocol>
+        - NEVER include introductory/concluding remarks, meta-commentary, or structural labels (e.g., do NOT write "This article...", "Here is the text:", "Output:", etc.).
+        - Your response must begin IMMEDIATELY with the first character of the extracted text or "NO_EXTRACTION". 
+        - Any character in your response that does not match the source text is a critical system crash.
+        </output_protocol>"""
 
 
 def build_task_template(
