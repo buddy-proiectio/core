@@ -45,6 +45,8 @@ LOG_FILE = "logs/extractor.log"
 
 logger = setup_logger(LOG_FILE, __name__)
 
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b-instruct-q8_0")
+
 disable_progress_bars()
 hf_hub_logging.set_verbosity_error()
 
@@ -261,6 +263,58 @@ def strip_tables(text: str) -> str:
         filtered_lines.append(line)
 
     return "\n".join(filtered_lines)
+
+
+def is_summary_or_hallucination(text: str) -> bool:
+    """
+    Checks if the output looks like a summary, conversational filler, prompt leakage,
+    or self-referential description rather than direct exact sentence extraction.
+    """
+    if not text:
+        return False
+
+    text_lower = text.lower().strip()
+
+    # 1. Prompt leakage / instruction echoing (Check anywhere in the text)
+    leakage_patterns = [
+        r"extraction\s+session\s+salt",
+        r"session\s+salt",
+        r"extraction\s+session",
+        r"zero-creativity\s+extraction",
+        r"gating\s+rule",
+        r"kpi\s+extraction",
+        r"100%\s+exact\s+substring\s+match",
+        r"output\s+format",
+        r"chronological\s+flow",
+        r"clutter\s+filtering",
+    ]
+    for pattern in leakage_patterns:
+        if re.search(pattern, text_lower):
+            return True
+
+    # 2. Conversational fillers, safety refusals, and summary intros (Check starting patterns)
+    prefix_patterns = [
+        r"^(this|the|in\s+this|in\s+the)\s+(article|text|post|news|excerpt|report|piece|document|summary|press\s+release)\b",
+        r"^(here\s+is|here\s+are)\b",
+        r"^summary\b",
+        r"^(i\s+have|i\s+will|i\s+shall|i\s+cannot|i\s+am\s+unable|i\s+apologize|i\s+do\s+not\s+have|i\s+am\s+not\s+programmed)\b",
+        r"^extracted\s+(sentence|kpi|fact|text)\b",
+        r"^based\s+on\s+the\s+(article|text|post|news|excerpt|report|piece|document|rules|instructions|goals)\b",
+        r"^according\s+to\s+the\s+(article|text|post|news|excerpt|report|piece|document|rules|instructions|goals)\b",
+        r"^here\s+is\s+the\s+extraction\b",
+        r"^here\s+is\s+what\s+i\s+extracted\b",
+        r"^extracted\s+from\s+the\s+(article|text)\b",
+        r"^no\s+(relevant\s+)?(kpis|facts|data|sentences|information)\b",
+        r"^there\s+(is|are)\s+no\s+(relevant\s+)?(kpis|facts|data|sentences|information)\b",
+        r"^this\s+article\s+does\s+not\b",
+        r"^the\s+provided\s+text\s+does\s+not\b",
+    ]
+
+    for pattern in prefix_patterns:
+        if re.search(pattern, text_lower):
+            return True
+
+    return False
 
 
 def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool]:
@@ -529,32 +583,91 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                             category_sec_outputs[category].append(final_text)
                         continue
 
-                    payload = {
-                        "model": "llama3.1",
-                        "messages": [
-                            {"role": "system", "content": sys_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "stream": False,
-                        "options": {
-                            "num_ctx": 8192,
-                            "num_predict": 1500,
-                            "temperature": 0.0,
-                            "top_p": 0.1,
-                            "num_keep": 0,
-                        },
-                    }
+                    max_attempts = 3
+                    attempt = 0
+                    success = False
+                    output = ""
+                    current_user_prompt = user_prompt
+
+                    while attempt < max_attempts and not success:
+                        attempt += 1
+
+                        temp = 0.0
+                        top_p = 0.1
+                        if attempt == 2:
+                            temp = 0.2
+                            top_p = 0.2
+                            current_user_prompt = user_prompt + (
+                                "\n\n[WARNING - RETRY] Your previous response was rejected because you summarized the article or used self-referential conversational filler (like 'This article...'). "
+                                "DO NOT summarize the article. DO NOT describe it. DO NOT start with 'This article...'. "
+                                "You must ONLY copy and paste the exact sentences from the source text that contain the KPIs. "
+                                "If no KPIs are present, reply with 'NO_EXTRACTION'."
+                            )
+                        elif attempt == 3:
+                            temp = 0.4
+                            top_p = 0.3
+                            current_user_prompt = user_prompt + (
+                                "\n\n[CRITICAL WARNING - FINAL RETRY] Do NOT start your response with 'This article...', 'The article...', 'In this article...', or any summary description. "
+                                "You are a deterministic copy-paste engine. Directly output the exact sentence(s) from the text, or output 'NO_EXTRACTION'."
+                            )
+
+                        payload = {
+                            "model": OLLAMA_MODEL,
+                            "messages": [
+                                {"role": "system", "content": sys_prompt},
+                                {"role": "user", "content": current_user_prompt},
+                            ],
+                            "stream": False,
+                            "options": {
+                                "num_ctx": 8192,
+                                "num_predict": 1500,
+                                "temperature": temp,
+                                "top_p": top_p,
+                                "num_keep": 0,
+                            },
+                        }
+
+                        try:
+                            if attempt == 1:
+                                logger.info(
+                                    f"Processing Task {idx:02d}/{total_tasks} [{category}] ..."
+                                )
+                            else:
+                                logger.info(
+                                    f"Retrying Task {idx:02d}/{total_tasks} [{category}] (Attempt {attempt}/{max_attempts}) due to summary/filler detection..."
+                                )
+
+                            # Synchronous post with TCP connection pooling
+                            resp = session.post(url, json=payload, timeout=600)
+                            resp.raise_for_status()
+                            data = resp.json()
+                            raw_output = (
+                                data.get("message", {}).get("content", "").strip()
+                            )
+
+                            if not raw_output:
+                                output = ""
+                                success = True
+                                break
+
+                            # Check if the output is a summary or has conversational filler
+                            if is_summary_or_hallucination(raw_output):
+                                logger.warning(
+                                    f"Task {idx:02d} [{category}] Attempt {attempt} output matched summary/filler pattern: '{raw_output[:80]}...'"
+                                )
+                                continue
+
+                            output = raw_output
+                            success = True
+
+                        except Exception as e:
+                            logger.error(
+                                f"Error processing Task {idx:02d} [{category}] on attempt {attempt}: {e}"
+                            )
+                            if attempt == max_attempts:
+                                break
 
                     try:
-                        logger.info(
-                            f"Processing Task {idx:02d}/{total_tasks} [{category}] ..."
-                        )
-                        # Synchronous post with TCP connection pooling
-                        resp = session.post(url, json=payload, timeout=600)
-                        resp.raise_for_status()
-                        data = resp.json()
-                        output = data.get("message", {}).get("content", "").strip()
-
                         # Rigid post-processing block
                         if output:
                             # Squash all newlines and excess whitespace natively
