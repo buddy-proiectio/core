@@ -317,6 +317,43 @@ def is_summary_or_hallucination(text: str) -> bool:
     return False
 
 
+def verify_exact_match(output: str, original_content: str) -> bool:
+    """
+    Verifies that every sentence in the LLM output is an exact substring of the original article content.
+    """
+    if not output or not original_content:
+        return False
+
+    # Clean and pre-process original content
+    content_clean = strip_tables(original_content)
+    content_clean = strip_captions(content_clean)
+    content_clean = " ".join(content_clean.split()).lower()
+
+    # Split output into sentences using regex
+    sentences = re.split(r"(?<=[.!?])\s+", output)
+
+    for sentence in sentences:
+        sentence_clean = " ".join(sentence.split()).strip().lower()
+        if not sentence_clean:
+            continue
+
+        # If it's a special token like NO_EXTRACTION, skip it
+        if "no_extraction" in sentence_clean or "no data" in sentence_clean:
+            continue
+
+        if sentence_clean not in content_clean:
+            # Fallback check stripping punctuation/symbols
+            sentence_stripped = re.sub(r"[^\w\s]", "", sentence_clean)
+            content_stripped = re.sub(r"[^\w\s]", "", content_clean)
+            if sentence_stripped not in content_stripped:
+                logger.warning(
+                    f"Exact match validation failed for sentence: '{sentence_clean[:60]}...'"
+                )
+                return False
+
+    return True
+
+
 def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool]:
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
@@ -598,7 +635,7 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                             temp = 0.2
                             top_p = 0.2
                             current_user_prompt = user_prompt + (
-                                "\n\n[WARNING - RETRY] Your previous response was rejected because you summarized the article or used self-referential conversational filler (like 'This article...'). "
+                                "\n\n[WARNING - RETRY] Your previous response was rejected because you summarized the article, used self-referential conversational filler, or hallucinated facts not present in the text. "
                                 "DO NOT summarize the article. DO NOT describe it. DO NOT start with 'This article...'. "
                                 "You must ONLY copy and paste the exact sentences from the source text that contain the KPIs. "
                                 "If no KPIs are present, reply with 'NO_EXTRACTION'."
@@ -608,7 +645,8 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                             top_p = 0.3
                             current_user_prompt = user_prompt + (
                                 "\n\n[CRITICAL WARNING - FINAL RETRY] Do NOT start your response with 'This article...', 'The article...', 'In this article...', or any summary description. "
-                                "You are a deterministic copy-paste engine. Directly output the exact sentence(s) from the text, or output 'NO_EXTRACTION'."
+                                "Do NOT hallucinate or output facts not present in the text. You are a deterministic copy-paste engine. "
+                                "Directly output the exact sentence(s) from the text, or output 'NO_EXTRACTION'."
                             )
 
                         payload = {
@@ -634,7 +672,7 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                                 )
                             else:
                                 logger.info(
-                                    f"Retrying Task {idx:02d}/{total_tasks} [{category}] (Attempt {attempt}/{max_attempts}) due to summary/filler detection..."
+                                    f"Retrying Task {idx:02d}/{total_tasks} [{category}] (Attempt {attempt}/{max_attempts}) due to summary/filler/hallucination detection..."
                                 )
 
                             # Synchronous post with TCP connection pooling
@@ -654,6 +692,15 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                             if is_summary_or_hallucination(raw_output):
                                 logger.warning(
                                     f"Task {idx:02d} [{category}] Attempt {attempt} output matched summary/filler pattern: '{raw_output[:80]}...'"
+                                )
+                                continue
+
+                            # Verify that the extracted text is actually present in the original article
+                            if not verify_exact_match(
+                                raw_output, article.get("content", "")
+                            ):
+                                logger.warning(
+                                    f"Task {idx:02d} [{category}] Attempt {attempt} output failed exact match validation (hallucination/leak detected)."
                                 )
                                 continue
 
