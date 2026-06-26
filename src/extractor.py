@@ -354,7 +354,10 @@ def verify_exact_match(output: str, original_content: str) -> bool:
     return True
 
 
-def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool]:
+def run_extractor(
+    data_dir: typing.Optional[str] = None,
+    report_type: typing.Optional[str] = None,
+) -> typing.Optional[bool]:
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
     Scans for category-specific JSON files, spins up a direct LLM execution pipeline
@@ -379,7 +382,21 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
     # 2. Categories are directly driven by the configurations in prompts.py
     categories = list(AGENT_CONFIGS.keys())
 
-    # 2.5 Load incremental state
+    # 2.5 Load premarket cache if this is not a premarket run
+    pre_state_data = None
+    if report_type != "premarket":
+        pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+        if os.path.exists(pre_state_filename):
+            try:
+                with open(pre_state_filename, "r", encoding="utf-8") as f:
+                    pre_state_data = json.load(f)
+                logger.info(
+                    "Loaded premarket state cache from extracted_state_pre.json"
+                )
+            except Exception as e:
+                logger.error(f"Failed to load premarket state cache: {e}")
+
+    # 2.6 Load incremental state
     state_filename = os.path.join(data_dir, f"extracted_state_{today_str}.json")
     state_data: dict[str, typing.Any] = {
         "extracted_urls": [],
@@ -397,6 +414,41 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
                 )
         except Exception as e:
             logger.error(f"Failed to load state file {state_filename}: {e}")
+
+    # 2.7 Merge premarket state into state_data if present
+    if pre_state_data:
+        # Merge URLs
+        for url in pre_state_data.get("extracted_urls", []):
+            if url not in state_data["extracted_urls"]:
+                state_data["extracted_urls"].append(url)
+
+        # Merge category normal outputs
+        pre_normal = pre_state_data.get("category_normal_outputs", {})
+        for cat, outputs in pre_normal.items():
+            if cat in state_data["category_normal_outputs"]:
+                for out in outputs:
+                    if out not in state_data["category_normal_outputs"][cat]:
+                        state_data["category_normal_outputs"][cat].append(out)
+
+        # Merge category sec outputs
+        pre_sec = pre_state_data.get("category_sec_outputs", {})
+        for cat, outputs in pre_sec.items():
+            if cat in state_data["category_sec_outputs"]:
+                for out in outputs:
+                    if out not in state_data["category_sec_outputs"][cat]:
+                        state_data["category_sec_outputs"][cat].append(out)
+
+        logger.info(
+            f"Merged premarket cache: now has {len(state_data['extracted_urls'])} URLs."
+        )
+
+        # Delete premarket cache file after successful merge so it's not merged again
+        try:
+            pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+            os.remove(pre_state_filename)
+            logger.info("Removed merged premarket cache file extracted_state_pre.json")
+        except Exception as e:
+            logger.error(f"Failed to remove premarket cache file: {e}")
 
     extracted_urls_set = set(state_data["extracted_urls"])
 
@@ -864,6 +916,13 @@ def run_extractor(data_dir: typing.Optional[str] = None) -> typing.Optional[bool
         try:
             with open(state_filename, "w", encoding="utf-8") as sf:
                 json.dump(state_data, sf, ensure_ascii=False, indent=2)
+
+            # If this is a premarket run, also save a copy to extracted_state_pre.json
+            if report_type == "premarket":
+                pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+                with open(pre_state_filename, "w", encoding="utf-8") as psf:
+                    json.dump(state_data, psf, ensure_ascii=False, indent=2)
+                logger.info("Saved premarket cache to extracted_state_pre.json")
         except Exception as e:
             logger.error(f"Failed to save state file: {e}")
 
@@ -911,5 +970,11 @@ if __name__ == "__main__":
         default=None,
         help="Directory containing the sorted JSON files",
     )
+    parser.add_argument(
+        "--report-type",
+        type=str,
+        default=None,
+        help="Type of the report pipeline (premarket, incremental, full)",
+    )
     args = parser.parse_args()
-    run_extractor(data_dir=args.data_dir)
+    run_extractor(data_dir=args.data_dir, report_type=args.report_type)

@@ -245,11 +245,11 @@ def run_all(report_type: str = "full"):
         logger.info("-----------------------------------------------------")
 
         logger.info("[2/5] Running Sorter...")
-        run_sorter(report_type=report_type)
+        run_sorter(report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[3/5] Running Extractor...")
-        run_extractor()
+        run_extractor(report_type)
         logger.info("-----------------------------------------------------")
 
         if report_type == "incremental":
@@ -259,7 +259,7 @@ def run_all(report_type: str = "full"):
             return
 
         logger.info("[4/5] Running CIO...")
-        run_cio(report_type=report_type)
+        run_cio(report_type)
         logger.info("-----------------------------------------------------")
 
         logger.info("[5/5] Running Formatter...")
@@ -318,8 +318,11 @@ def _cleanup_data_files(data_dir: str):
     for file_path in all_files:
         if os.path.isfile(file_path):
             filename = os.path.basename(file_path)
-            # Keep the final alpha signal markdown files
-            if not (filename.startswith("alpha_signal_") and filename.endswith(".md")):
+            # Keep the final alpha signal markdown files and premarket cache file
+            if not (
+                (filename.startswith("alpha_signal_") and filename.endswith(".md"))
+                or filename == "extracted_state_pre.json"
+            ):
                 try:
                     os.remove(file_path)
                     logger.debug(f"Deleted {filename}")
