@@ -154,7 +154,7 @@ def run_all(report_type: str = "full"):
             )
             return
     elif report_type == "incremental":
-        # Incremental runs at 00:00 and 03:00, no time lock strictly needed,
+        # Incremental runs at 00:00 and 04:00, no time lock strictly needed,
         # but we can let it pass anytime.
         pass
 
@@ -249,7 +249,7 @@ def run_all(report_type: str = "full"):
         logger.info("-----------------------------------------------------")
 
         logger.info("[3/5] Running Extractor...")
-        run_extractor(report_type)
+        run_extractor(report_type=report_type)
         logger.info("-----------------------------------------------------")
 
         if report_type == "incremental":
@@ -288,7 +288,7 @@ def run_all(report_type: str = "full"):
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
                 )
-                _cleanup_data_files(data_dir)
+                # _cleanup_data_files(data_dir)
                 logger.info("Cleanup complete.")
             else:
                 logger.info(

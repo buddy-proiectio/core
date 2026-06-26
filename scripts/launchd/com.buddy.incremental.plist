@@ -19,10 +19,10 @@
             <key>Minute</key>
             <integer>2</integer>
         </dict>
-        <!-- NY 03:00 (EDT Local Time -> Sydney 17:00) -->
+        <!-- NY 04:00 (EDT Local Time -> Sydney 18:00) -->
         <dict>
             <key>Hour</key>
-            <integer>17</integer>
+            <integer>18</integer>
             <key>Minute</key>
             <integer>4</integer>
         </dict>
