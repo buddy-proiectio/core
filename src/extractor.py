@@ -45,7 +45,7 @@ LOG_FILE = "logs/extractor.log"
 
 logger = setup_logger(LOG_FILE, __name__)
 
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b-instruct-q8_0")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1")
 
 disable_progress_bars()
 hf_hub_logging.set_verbosity_error()
