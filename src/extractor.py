@@ -265,58 +265,6 @@ def strip_tables(text: str) -> str:
     return "\n".join(filtered_lines)
 
 
-def is_summary_or_hallucination(text: str) -> bool:
-    """
-    Checks if the output looks like a summary, conversational filler, prompt leakage,
-    or self-referential description rather than direct exact sentence extraction.
-    """
-    if not text:
-        return False
-
-    text_lower = text.lower().strip()
-
-    # 1. Prompt leakage / instruction echoing (Check anywhere in the text)
-    leakage_patterns = [
-        r"extraction\s+session\s+salt",
-        r"session\s+salt",
-        r"extraction\s+session",
-        r"zero-creativity\s+extraction",
-        r"gating\s+rule",
-        r"kpi\s+extraction",
-        r"100%\s+exact\s+substring\s+match",
-        r"output\s+format",
-        r"chronological\s+flow",
-        r"clutter\s+filtering",
-    ]
-    for pattern in leakage_patterns:
-        if re.search(pattern, text_lower):
-            return True
-
-    # 2. Conversational fillers, safety refusals, and summary intros (Check starting patterns)
-    prefix_patterns = [
-        r"^(this|the|in\s+this|in\s+the)\s+(article|text|post|news|excerpt|report|piece|document|summary|press\s+release)\b",
-        r"^(here\s+is|here\s+are)\b",
-        r"^summary\b",
-        r"^(i\s+have|i\s+will|i\s+shall|i\s+cannot|i\s+am\s+unable|i\s+apologize|i\s+do\s+not\s+have|i\s+am\s+not\s+programmed)\b",
-        r"^extracted\s+(sentence|kpi|fact|text)\b",
-        r"^based\s+on\s+the\s+(article|text|post|news|excerpt|report|piece|document|rules|instructions|goals)\b",
-        r"^according\s+to\s+the\s+(article|text|post|news|excerpt|report|piece|document|rules|instructions|goals)\b",
-        r"^here\s+is\s+the\s+extraction\b",
-        r"^here\s+is\s+what\s+i\s+extracted\b",
-        r"^extracted\s+from\s+the\s+(article|text)\b",
-        r"^no\s+(relevant\s+)?(kpis|facts|data|sentences|information)\b",
-        r"^there\s+(is|are)\s+no\s+(relevant\s+)?(kpis|facts|data|sentences|information)\b",
-        r"^this\s+article\s+does\s+not\b",
-        r"^the\s+provided\s+text\s+does\s+not\b",
-    ]
-
-    for pattern in prefix_patterns:
-        if re.search(pattern, text_lower):
-            return True
-
-    return False
-
-
 def verify_exact_match(output: str, original_content: str) -> bool:
     """
     Verifies that every sentence in the LLM output is an exact substring of the original article content.
@@ -471,6 +419,15 @@ def run_extractor(
             category_sec_outputs[cat] = []
         if cat not in category_normal_outputs:
             category_normal_outputs[cat] = []
+
+    # Keep track of initial URLs and outputs before tasks are run
+    initial_extracted_urls = set(state_data.get("extracted_urls", []))
+    initial_normal_outputs = {
+        cat: list(outputs) for cat, outputs in category_normal_outputs.items()
+    }
+    initial_sec_outputs = {
+        cat: list(outputs) for cat, outputs in category_sec_outputs.items()
+    }
 
     # Initialize lightweight embedding model globally for the run
     logger.info(
@@ -672,99 +629,49 @@ def run_extractor(
                             category_sec_outputs[category].append(final_text)
                         continue
 
-                    max_attempts = 3
-                    attempt = 0
-                    success = False
-                    output = ""
-                    current_user_prompt = user_prompt
+                    payload = {
+                        "model": OLLAMA_MODEL,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "stream": False,
+                        "options": {
+                            "num_ctx": 8192,
+                            "num_predict": 1500,
+                            "temperature": 0.0,
+                            "top_p": 0.1,
+                            "num_keep": 0,
+                        },
+                    }
 
-                    while attempt < max_attempts and not success:
-                        attempt += 1
+                    try:
+                        logger.info(
+                            f"Processing Task {idx:02d}/{total_tasks} [{category}] ..."
+                        )
+                        # Synchronous post with TCP connection pooling
+                        resp = session.post(url, json=payload, timeout=600)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        raw_output = data.get("message", {}).get("content", "").strip()
 
-                        temp = 0.0
-                        top_p = 0.1
-                        if attempt == 2:
-                            temp = 0.2
-                            top_p = 0.2
-                            current_user_prompt = user_prompt + (
-                                "\n\n[WARNING - RETRY] Your previous response was rejected because you summarized the article, used self-referential conversational filler, or hallucinated facts not present in the text. "
-                                "DO NOT summarize the article. DO NOT describe it. DO NOT start with 'This article...'. "
-                                "You must ONLY copy and paste the exact sentences from the source text that contain the KPIs. "
-                                "If no KPIs are present, reply with 'NO_EXTRACTION'."
+                        if not raw_output:
+                            output = "NO_EXTRACTION"
+                        elif not verify_exact_match(
+                            raw_output, article.get("content", "")
+                        ):
+                            logger.warning(
+                                f"Task {idx:02d} [{category}] output failed exact match validation (hallucination/leak detected). Skipping article."
                             )
-                        elif attempt == 3:
-                            temp = 0.4
-                            top_p = 0.3
-                            current_user_prompt = user_prompt + (
-                                "\n\n[CRITICAL WARNING - FINAL RETRY] Do NOT start your response with 'This article...', 'The article...', 'In this article...', or any summary description. "
-                                "Do NOT hallucinate or output facts not present in the text. You are a deterministic copy-paste engine. "
-                                "Directly output the exact sentence(s) from the text, or output 'NO_EXTRACTION'."
-                            )
-
-                        payload = {
-                            "model": OLLAMA_MODEL,
-                            "messages": [
-                                {"role": "system", "content": sys_prompt},
-                                {"role": "user", "content": current_user_prompt},
-                            ],
-                            "stream": False,
-                            "options": {
-                                "num_ctx": 8192,
-                                "num_predict": 1500,
-                                "temperature": temp,
-                                "top_p": top_p,
-                                "num_keep": 0,
-                            },
-                        }
-
-                        try:
-                            if attempt == 1:
-                                logger.info(
-                                    f"Processing Task {idx:02d}/{total_tasks} [{category}] ..."
-                                )
-                            else:
-                                logger.info(
-                                    f"Retrying Task {idx:02d}/{total_tasks} [{category}] (Attempt {attempt}/{max_attempts}) due to summary/filler/hallucination detection..."
-                                )
-
-                            # Synchronous post with TCP connection pooling
-                            resp = session.post(url, json=payload, timeout=600)
-                            resp.raise_for_status()
-                            data = resp.json()
-                            raw_output = (
-                                data.get("message", {}).get("content", "").strip()
-                            )
-
-                            if not raw_output:
-                                output = ""
-                                success = True
-                                break
-
-                            # Check if the output is a summary or has conversational filler
-                            if is_summary_or_hallucination(raw_output):
-                                logger.warning(
-                                    f"Task {idx:02d} [{category}] Attempt {attempt} output matched summary/filler pattern: '{raw_output[:80]}...'"
-                                )
-                                continue
-
-                            # Verify that the extracted text is actually present in the original article
-                            if not verify_exact_match(
-                                raw_output, article.get("content", "")
-                            ):
-                                logger.warning(
-                                    f"Task {idx:02d} [{category}] Attempt {attempt} output failed exact match validation (hallucination/leak detected)."
-                                )
-                                continue
-
+                            output = "NO_EXTRACTION"
+                        else:
                             output = raw_output
-                            success = True
 
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing Task {idx:02d} [{category}] on attempt {attempt}: {e}"
-                            )
-                            if attempt == max_attempts:
-                                break
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing Task {idx:02d} [{category}]: {e}"
+                        )
+                        output = "NO_EXTRACTION"
 
                     try:
                         # Rigid post-processing block
@@ -917,12 +824,44 @@ def run_extractor(
             with open(state_filename, "w", encoding="utf-8") as sf:
                 json.dump(state_data, sf, ensure_ascii=False, indent=2)
 
-            # If this is a premarket run, also save a copy to extracted_state_pre.json
+            # If this is a premarket run, also save a copy to extracted_state_pre.json (only new premarket data)
             if report_type == "premarket":
                 pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+
+                # Filter only new URLs
+                new_urls = [
+                    url
+                    for url in state_data.get("extracted_urls", [])
+                    if url not in initial_extracted_urls
+                ]
+
+                # Filter only new normal outputs
+                new_category_normal = {}
+                for cat, outputs in category_normal_outputs.items():
+                    init_outs = initial_normal_outputs.get(cat, [])
+                    new_category_normal[cat] = [
+                        out for out in outputs if out not in init_outs
+                    ]
+
+                # Filter only new sec outputs
+                new_category_sec = {}
+                for cat, outputs in category_sec_outputs.items():
+                    init_outs = initial_sec_outputs.get(cat, [])
+                    new_category_sec[cat] = [
+                        out for out in outputs if out not in init_outs
+                    ]
+
+                pre_state_data = {
+                    "extracted_urls": new_urls,
+                    "category_normal_outputs": new_category_normal,
+                    "category_sec_outputs": new_category_sec,
+                }
+
                 with open(pre_state_filename, "w", encoding="utf-8") as psf:
-                    json.dump(state_data, psf, ensure_ascii=False, indent=2)
-                logger.info("Saved premarket cache to extracted_state_pre.json")
+                    json.dump(pre_state_data, psf, ensure_ascii=False, indent=2)
+                logger.info(
+                    f"Saved premarket cache to extracted_state_pre.json with {len(new_urls)} new URLs."
+                )
         except Exception as e:
             logger.error(f"Failed to save state file: {e}")
 
