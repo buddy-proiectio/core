@@ -14,6 +14,7 @@ graph TD
     sorter --> extractor[3. Extractor: Semantic Deduplicator & KPI Extractor]
     extractor --> cio[4. CIO: Narrative Synthesis & Premarket Scoring Selector]
     cio --> formatter[5. Formatter: Smart Padding, Escaping & English Schedule Builder]
+    formatter --> translator[6. Translator: English to Korean Translation]
 ```
 
 ### 1. Sieve (`sieve/`)
@@ -101,7 +102,7 @@ graph TD
 - **Duplicate Execution Prevention:** Creates a locked state file `logs/buddy.lock` storing the active PID to block concurrent duplicate processes.
 - **Oracle SCP Pull Client:** Pulls raw data from the Oracle Cloud VM (`159.13.60.28`) using secure SSH SCP transfers, with robust 5-attempt retry delays (60-second backoff).
 - **Hung Process Auto-Recovery:** If a lock exists but the process is inactive, cleans the lock. If active but running for more than 2 hours (hung state), it forcefully terminates the process (SIGKILL) and clears the lock to prevent bottlenecking.
-- **Deferred Cleanup & Git Push:** Retains intermediate files during full runs until the premarket sequence completes. Automatically stages, commits (`docs: add daily {type} alpha signal report...`), and pushes final formatted markdown files (`data/alpha_signal_*.md`) directly to the remote GitHub repository.
+- **Deferred Cleanup** Retains intermediate files during full runs until the premarket sequence completes.
 
 ---
 
