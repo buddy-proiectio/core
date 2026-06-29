@@ -37,6 +37,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
@@ -568,6 +569,14 @@ def run_extractor(
             )
         else:
             logger.info(f"File not found, skipping category: {category}")
+
+    # Free embedding model / loky resources immediately after use
+    try:
+        from joblib.externals.loky import get_reusable_executor
+        get_reusable_executor().shutdown(wait=True)
+        logger.info("Successfully shut down loky reusable executor.")
+    except Exception as e:
+        logger.debug(f"Failed to shutdown loky executor: {e}")
 
     # Process all tasks directly via Local LLM
     if active_tasks:
