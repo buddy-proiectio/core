@@ -84,6 +84,15 @@ graph TD
   - Escapes raw dollar symbols (`$`) as `\$` to prevent PDF/LaTeX markdown parser equations rendering errors.
   - Removes standalone metadata tags like `**Daily Point**` to clean up the final output.
 
+### 6. Translator (`src/translator.py`)
+
+**Role:** English-to-Korean Translation & Serving lifecycle Controller
+
+- **Dynamic Server Lifecycle Management**: Controls the lifecycle of the local custom NMT server (`../cortex` FastAPI server on port `8000`). Automatically starts the server before translation and terminates it afterwards to prevent it from running in the background.
+- **Segmented Translation**: Translates the title and body of news articles separately to maintain precise structural formatting and avoid text truncation.
+- **Translation State Caching**: Maintains `translated_state_YYYYMMDD.json` mapping URLs to translations to avoid redundant translation API requests.
+- **Korean Markdown Localizer**: Converts categories to Korean (e.g., General -> 경제 일반) and formats schedule dates into Korean KST representations, saving the final output in `data/ko/alpha_signal_[premarket_]YYYYMMDD_ko.md`.
+
 ### Orchestration (`src/__init__.py`)
 
 **Role:** Unified Orchestration Loop, Lock Prevention & Git Publisher
