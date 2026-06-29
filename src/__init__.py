@@ -17,12 +17,13 @@ import subprocess
 import time
 import argparse
 import json
-from datetime import datetime
 import glob
 import pytz
 import holidays
-
+import signal
+from datetime import datetime
 from shared.shared_logger import setup_logger
+from translator import run_translator
 
 logger = setup_logger(logger_name=__name__)
 
@@ -199,8 +200,6 @@ def run_all(report_type: str = "full"):
                         f"Detected hung buddy process (PID {lock_pid}, running for {elapsed_hours:.1f} hours). Forcefully terminating the hung process to clear bottleneck."
                     )
                     try:
-                        import signal
-
                         os.kill(lock_pid, signal.SIGKILL)
                         time.sleep(2)
                     except Exception as e:
@@ -253,8 +252,10 @@ def run_all(report_type: str = "full"):
         logger.info("-----------------------------------------------------")
 
         if report_type == "incremental":
+            logger.info("Running Translator for Incremental...")
+            run_translator(report_type)
             logger.info(
-                "Incremental pipeline completed successfully up to Extractor. Exiting."
+                "Incremental pipeline completed successfully up to Translator. Exiting."
             )
             return
 
@@ -281,9 +282,15 @@ def run_all(report_type: str = "full"):
                 else f"alpha_signal_{today_str}.md"
             ),
         )
-        success = run_formatter(cio_file, out_file)
+        success = run_formatter(cio_file, out_file, lang="en")
 
         if success:
+            logger.info("Running Translator for Korean report...")
+            try:
+                run_translator(report_type)
+            except Exception as e:
+                logger.error(f"Translator failed: {e}")
+
             if report_type == "premarket":
                 logger.info(
                     "Premarket pipeline completed successfully. Cleaning up intermediate data files..."
@@ -297,7 +304,9 @@ def run_all(report_type: str = "full"):
 
             logger.info("Successfully completed Buddy Core Pipeline!")
         else:
-            logger.warning("Translator did not return success. Skipping cleanup.")
+            logger.warning(
+                "Formatter did not return success. Skipping translation and cleanup."
+            )
 
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")

@@ -11,6 +11,7 @@ import re
 import json
 import argparse
 import pytz
+from datetime import datetime, timedelta
 from typing import Optional
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -77,20 +78,13 @@ def build_english_weekly_schedule(
     # Determine base date
     if base_date_str:
         try:
-            from datetime import datetime
-
             base_date = datetime.strptime(base_date_str, "%Y%m%d").date()
         except ValueError:
-            from datetime import datetime
-
             base_date = datetime.now(ny_tz).date()
     else:
-        from datetime import datetime
-
         base_date = datetime.now(ny_tz).date()
 
     # Generate NY EST-aligned 7 consecutive days
-    from datetime import timedelta
 
     target_dates = [base_date + timedelta(days=i) for i in range(7)]
     grouped = {d: [] for d in target_dates}
@@ -140,10 +134,126 @@ def build_english_weekly_schedule(
     return "\n".join(lines).strip()
 
 
+def build_korean_weekly_schedule(
+    events: list, base_date_str: Optional[str] = None
+) -> str:
+    WEEKDAYS_KO = [
+        "월요일",
+        "화요일",
+        "수요일",
+        "목요일",
+        "금요일",
+        "토요일",
+        "일요일",
+    ]
+    CURRENCY_TO_COUNTRY = {
+        "USD": "미국",
+        "KRW": "한국",
+        "JPY": "일본",
+        "EUR": "EU",
+        "GBP": "영국",
+        "CAD": "캐나다",
+        "AUD": "호주",
+        "CNY": "중국",
+    }
+
+    TICKER_TO_KOREAN_NAME = {}
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        targets_file = os.path.join(project_root, "shared", "market_map_targets.json")
+        if os.path.exists(targets_file):
+            with open(targets_file, "r", encoding="utf-8") as f:
+                targets_data = json.load(f)
+                for item in targets_data:
+                    symbol = item.get("Symbol")
+                    korean_name = item.get("Korean Name")
+                    if symbol and korean_name:
+                        TICKER_TO_KOREAN_NAME[symbol.upper()] = korean_name
+        else:
+            logger.warning(f"market_map_targets.json not found at {targets_file}")
+    except Exception as e:
+        logger.error(f"Failed to load market_map_targets.json: {e}")
+
+    # Fallback mappings for aliases
+    if "GOOG" not in TICKER_TO_KOREAN_NAME and "GOOGL" in TICKER_TO_KOREAN_NAME:
+        TICKER_TO_KOREAN_NAME["GOOG"] = TICKER_TO_KOREAN_NAME["GOOGL"]
+
+    ny_tz = pytz.timezone("America/New_York")
+
+    # Determine base date
+    if base_date_str:
+        try:
+            base_date = datetime.strptime(base_date_str, "%Y%m%d").date()
+        except ValueError:
+            base_date = datetime.now(ny_tz).date()
+    else:
+        base_date = datetime.now(ny_tz).date()
+
+    # Generate NY EST-aligned 7 consecutive days
+
+    target_dates = [base_date + timedelta(days=i) for i in range(7)]
+    grouped = {d: [] for d in target_dates}
+
+    for event in events:
+        utc_time_str = event.get("utc_time")
+        if not utc_time_str:
+            continue
+
+        utc_dt = parse_utc_time(utc_time_str)
+
+        # TIMEZONE MIDNIGHT BUG FIX
+        if utc_dt.hour == 0 and utc_dt.minute == 0 and utc_dt.second == 0:
+            local_date = utc_dt.date()
+        else:
+            local_dt = utc_dt.astimezone(ny_tz)
+            local_date = local_dt.date()
+
+        currency = event.get("currency", "USD")
+        importance = event.get("importance", "medium")
+        name = event.get("name", "").strip()
+        korean_name = event.get("korean_name", "").strip()
+
+        country = CURRENCY_TO_COUNTRY.get(currency, currency)
+
+        if importance == "holiday":
+            evt_str = (
+                f"미국 증시 휴장 - {korean_name}"
+                if korean_name
+                else f"미국 증시 휴장 - {name}"
+            )
+        elif importance == "earnings":
+            # Map ticker NVDA -> 엔비디아
+            ticker = name.split()[0].upper()
+            company_name = TICKER_TO_KOREAN_NAME.get(ticker, ticker)
+            evt_str = f"{company_name} 실적발표"
+        else:
+            clean_ko_name = korean_name if korean_name else name
+            if country and clean_ko_name.startswith(country):
+                clean_ko_name = clean_ko_name[len(country) :].strip()
+                clean_ko_name = clean_ko_name.lstrip("-/ ").strip()
+            evt_str = f"({country}) {clean_ko_name}"
+
+        # Only add if it falls within the 7-day range
+        if local_date in grouped:
+            grouped[local_date].append(evt_str)
+
+    # Construct the KO weekly schedule block
+    lines = []
+    for d in target_dates:
+        weekday_ko = WEEKDAYS_KO[d.weekday()]
+        header = f"{d.month}월 {d.day}일 ({weekday_ko})"
+        lines.append(header)
+        for evt in grouped[d]:
+            lines.append(evt)
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def replace_weekly_schedule(content: str, schedule_str: str) -> str:
     # Find header
-    header_pattern = r"(###\s+Weekly\s+Schedule)"
-    match = re.search(header_pattern, content)
+    header_pattern = r"(###\s+(?:Weekly\s+Schedule|주간\s*일정))"
+    match = re.search(header_pattern, content, re.IGNORECASE)
     if not match:
         return content
 
@@ -162,7 +272,9 @@ def replace_weekly_schedule(content: str, schedule_str: str) -> str:
     return new_content
 
 
-def format_content(content: str, weekly_schedule_data: Optional[list] = None) -> str:
+def format_content(
+    content: str, lang: str = "en", weekly_schedule_data: Optional[list] = None
+) -> str:
     """
     Applies markdown formatting rules to the report content.
     """
@@ -191,7 +303,10 @@ def format_content(content: str, weekly_schedule_data: Optional[list] = None) ->
     if weekly_schedule_data is None:
         weekly_schedule_data = []
 
-    est_schedule = build_english_weekly_schedule(weekly_schedule_data, date_str)
+    if lang == "en":
+        est_schedule = build_english_weekly_schedule(weekly_schedule_data, date_str)
+    else:
+        est_schedule = build_korean_weekly_schedule(weekly_schedule_data, date_str)
     content = replace_weekly_schedule(content, est_schedule)
 
     lines = content.split("\n")
@@ -211,43 +326,50 @@ def format_content(content: str, weekly_schedule_data: Optional[list] = None) ->
 
         # Track if we are inside the Weekly Schedule section
         if stripped.startswith("### "):
-            if "Weekly Schedule" in stripped:
+            if "Weekly Schedule" in stripped or "주간 일정" in stripped:
                 in_weekly_schedule = True
             else:
                 in_weekly_schedule = False
 
-        # 1.0) Bold removal for "Good day"
-        line = re.sub(r"\*\*(Good day)(.*?)\*\*", r"\1\2", line, flags=re.IGNORECASE)
+        # 1.0) Bold removal for "Good day" or "안녕하세요"
+        line = re.sub(
+            r"\*\*(Good day|안녕하세요)(.*?)\*\*", r"\1\2", line, flags=re.IGNORECASE
+        )
         stripped = line.strip()
 
         # 1.1) Header formatting: ## YYYYMMDD
         m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped)
         if m_report:
             year, month, day = m_report.groups()
-            months_en = [
-                "Jan",
-                "Feb",
-                "Mar",
-                "Apr",
-                "May",
-                "Jun",
-                "Jul",
-                "Aug",
-                "Sep",
-                "Oct",
-                "Nov",
-                "Dec",
-            ]
-            month_name = months_en[int(month) - 1]
-            line = f"## {int(day)} {month_name} {year} Alpha Signal"
+            if lang == "en":
+                months_en = [
+                    "Jan",
+                    "Feb",
+                    "Mar",
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep",
+                    "Oct",
+                    "Nov",
+                    "Dec",
+                ]
+                month_name = months_en[int(month) - 1]
+                line = f"## {int(day)} {month_name} {year} Alpha Signal"
+            else:
+                line = f"## {year}년 {int(month)}월 {int(day)}일 Alpha Signal"
 
         # 1.2) Smart markdown line break ('<br />')
         # If this line is part of a list/schedule and the NEXT line is not empty and not separator
         date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\("
+        date_pattern_ko = r"^(\d+)월\s+(\d+)일\s*\("
 
         is_target_line = (
             stripped.startswith(("_ ", "* ", "- ", "[", "★ ", "("))
             or re.match(date_pattern, stripped)
+            or re.match(date_pattern_ko, stripped)
             or (in_weekly_schedule and not stripped.startswith("###"))
         )
 
@@ -290,10 +412,10 @@ def format_content(content: str, weekly_schedule_data: Optional[list] = None) ->
         processed_lines.append(line)
 
     # 3. Apply newline formatting constraints
-    # Ensure Good day. is followed by exactly two newlines (1 blank line)
+    # Ensure Good day. / 안녕하세요. is followed by exactly two newlines (1 blank line)
     formatted_text = "\n".join(processed_lines)
     formatted_text = re.sub(
-        r"((?:Good day\.))\s*\n+",
+        r"((?:Good day\.|안녕하세요\.))\s*\n+",
         r"\1\n\n",
         formatted_text,
         flags=re.IGNORECASE,
@@ -313,9 +435,9 @@ def format_content(content: str, weekly_schedule_data: Optional[list] = None) ->
     return formatted_text
 
 
-def run_formatter(input_file: str, output_file: str):
+def run_formatter(input_file: str, output_file: str, lang: str = "en"):
     """Reads input_file, formats it using format_content, and saves to output_file."""
-    logger.info(f"Starting formatting process: {input_file} -> {output_file}")
+    logger.info(f"Starting formatting process: {input_file} -> {output_file} ({lang})")
     if not os.path.exists(input_file):
         logger.error(f"Error: Input file {input_file} does not exist.")
         return False
@@ -356,7 +478,7 @@ def run_formatter(input_file: str, output_file: str):
         with open(input_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        formatted = format_content(content, weekly_schedule_data)
+        formatted = format_content(content, lang, weekly_schedule_data)
 
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(formatted)
@@ -374,6 +496,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output", required=True, help="Path to output markdown report"
     )
+    parser.add_argument(
+        "--lang", default="en", choices=["en", "ko"], help="Target language (en/ko)"
+    )
 
     args = parser.parse_args()
-    run_formatter(args.input, args.output)
+    run_formatter(args.input, args.output, args.lang)
