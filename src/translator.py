@@ -1,7 +1,7 @@
 """
-The Translator Agent (English to Korean translation using custom backend engine)
+The Translator Agent (English to Korean translation using Google AI Studio)
 
-Translates extracted articles using NLLB model via custom API endpoint at http://127.0.0.1:8000/translate,
+Translates extracted articles in batches using Google Gemini or Gemma models,
 manages translation caching to avoid redundant calls, and formats the final Korean reports.
 """
 
@@ -13,10 +13,9 @@ import glob
 import argparse
 import requests
 import pytz
-import subprocess
 import time
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,6 +25,27 @@ from formatter import run_formatter
 
 LOG_FILE = "logs/translator.log"
 logger = setup_logger(LOG_FILE, __name__)
+
+# Model fallback chain configuration
+# Can be overridden via TRANSLATOR_MODEL env var (e.g. TRANSLATOR_MODEL="gemma-4-31b,gemma-4-26b")
+env_model = os.environ.get("TRANSLATOR_MODEL", "")
+if env_model:
+    MODEL_CHAIN = [m.strip() for m in env_model.split(",") if m.strip()]
+else:
+    MODEL_CHAIN = [
+        "gemma-4-31b",
+        "gemma-4-26b",
+        "gemma-3-27b",
+        "gemma-2-27b-it",
+    ]
+
+# In-memory registry to track which models do not support native responseSchema
+# to avoid wasting API calls on subsequent batches.
+SCHEMA_UNSUPPORTED_MODELS = set()
+
+# In-memory registry to track which models do not support native thinkingConfig (thinkingBudget)
+# to avoid wasting API calls on subsequent batches.
+THINKING_CONFIG_UNSUPPORTED_MODELS = set()
 
 CATEGORY_MAPPING = {
     "### General": "### 경제 일반",
@@ -63,62 +83,225 @@ def parse_article_block(block: str) -> tuple[str, str, str]:
     return "", "", ""
 
 
-def translate_article(title: str, body: str) -> str:
+TRANSLATION_SYSTEM_PROMPT = """You are a professional financial translator specializing in translating US financial news and articles into high-quality, professional Korean for the South Korean capital markets (Seoul/Yeouido financial district standard).
+
+Your task is to translate the provided JSON array of articles.
+You MUST output your response strictly as a JSON object containing a "translations" key mapped to an array of translated articles. Each item in the array must preserve the "url" key and contain the translated "title" and "body" keys.
+
+Follow these strict Core Rules for translation:
+
+[Core Rules]
+Rule 1. Headline and Title Processing (Structural De-Noising)
+- Structural Noise Elimination: Completely destroy English-style narrative structures (e.g., 'Here's Why~', 'Here's How Much~') and keep only the core conclusions. Clean up and organize unnecessary punctuation marks (dashes '-', colons ':') to fit the Korean journalistic tone.
+  Original: Broadcom shares plunge after AI forecast disappoints: Here's Why
+  Replacement: AI 전망치 실망감에 브로드컴 주가 폭락
+- LaTeX Exclusion: Do not use LaTeX syntax ($, $$) anywhere in titles or body text for percentages (e.g., use 10% instead of $10\%$), multiples, or simple numbers. Maintain only standard markdown formatting.
+
+Rule 2. Currency Units and Numeric Conversion (Financial Localization)
+- South Korean Capital Market Notation Matching: Do not perform currency conversion for USD Billions ($B, billion) and Millions ($M, million). Instead, convert them into Korean-style numbers keeping the USD unit without error.
+  Example: $12.5bn / $12.5B ➡️ 125억 달러
+  Example: $35M ➡️ 3,500만 달러
+- Arabic Numeral Unification: Convert ordinal numbers or written English text (e.g., "Five hundred", "Two") into intuitive Arabic numerals (e.g., "500", "2") for readability.
+
+Rule 3. Corporate Names, Persons, and Proper Nouns (Proper Noun Lifecycle)
+- First Exposure (Buildup): When global company names, major media outlets, or benchmark indices first appear in the text, define them precisely by combining the Korean common name and the original English name in parentheses.
+  Example: Target ➡️ 타깃(Target)
+  Example: SPS Commerce ➡️ 에스피에스 커머스(SPS Commerce)
+- Subsequent Exposure (Streamlining): Once a proper noun has been defined at its first exposure, strip away all complex English parentheses, tickers (e.g., NASDAQ:, NYSE:, Ticker), and original English names. Use only the clean Korean name.
+  Example from 2nd exposure: 타깃(Target) or Target (NYSE:TGT) ➡️ 타깃
+- No NER Segmentation: Do not segment unified institutional names into separate person names and institutions (e.g., do not split "J.P. Morgan" into "JP's analyst Morgan"; treat it as one complete institution "JP모건").
+- Emotional Alignment of Persons and Titles: Rearrange English-style post-positional titles to match the Korean word order structure ("Title + Name") and clearly attribute quotes.
+  Original: Brian Cornell, the retailer's executive chairman
+  Replacement: 이 대형 유통업체의 이사회 의장인 브라이언 코넬
+
+Rule 4. Financial/Investment Terminology and Business Verbs (Domain-Specific Context)
+- Combined Format Mapping: Translate key financial metrics in tech, SaaS, and retail sectors into a combined format of 'English abbreviation + Korean definition' to maintain capital market standards.
+  Example: ARR ➡️ 연간반복매출(ARR), Capex ➡️ 자본지출(Capex), LTV ➡️ 고객생애가치(LTV), CAC ➡️ 고객획득비용(CAC)
+- Business Context Free Translation: Translate verbs or expressions that sound awkward when translated literally in macroeconomic contexts into sophisticated Korean investment newsletter/research letter tones.
+  Example: greenback ➡️ 미국 달러화 (Never translate literally as greenback, and avoid incorrect translations like funding holdings)
+  Example: parabolic run ➡️ 포물선형 급등 장세
+  Example: torpedo ➡️ 치명적인 위험 요인
+
+Rule 5. Formatting Integrity and Output Specification (Output Integrity)
+- Sentence Ending Fixation: Every single sentence must end with polite, formal Korean endings (~습니다, ~합니다). Do not omit sentence endings or end with nominal forms (~함, ~음).
+- Zero Skip: Every single article in the input array must be translated and included in the output response without exception.
+- Pure JSON Output: Return only the pure JSON data without conversational filler, preambles, or markdown code block ticks (```json).
+
+Rule 6. Direct JSON Response (No Chain-of-Thought)
+- No Chain-of-Thought / Thinking: Do not output any thinking process, internal reasoning, or chain-of-thought text. Skip reasoning entirely and proceed directly to outputting the final translations JSON array.
+"""
+
+
+def build_payload(user_prompt: str, model: str) -> dict:
+    """Builds the API request payload dynamically based on model capabilities."""
+    generation_config: Dict[str, Any] = {
+        "temperature": 0.1,
+        "responseMimeType": "application/json",
+    }
+
+    # Inject responseSchema if model is not registered as schema-unsupported
+    if model not in SCHEMA_UNSUPPORTED_MODELS:
+        generation_config["responseSchema"] = {
+            "type": "OBJECT",
+            "properties": {
+                "translations": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "url": {"type": "STRING"},
+                            "title": {"type": "STRING"},
+                            "body": {"type": "STRING"},
+                        },
+                        "required": ["url", "title", "body"],
+                    },
+                }
+            },
+            "required": ["translations"],
+        }
+
+    # Inject thinkingConfig with thinkingBudget=0 to disable thinking mode bottleneck
+    # only if the model is not registered as unsupported
+    if model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
+        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+
+    payload: Dict[str, Any] = {
+        "contents": [{"parts": [{"text": user_prompt}]}],
+        "systemInstruction": {"parts": [{"text": TRANSLATION_SYSTEM_PROMPT}]},
+        "generationConfig": generation_config,
+    }
+
+    return payload
+
+
+def call_gemini_translator_api(
+    articles: List[Dict[str, str]],
+    retries_per_model: int = 2,
+    backoff_factor: int = 3,
+) -> Dict[str, Dict[str, str]]:
     """
-    Calls custom translation API at http://127.0.0.1:8000/translate.
-    Translates title and body separately to preserve format and prevent truncation.
+    Calls Google AI Studio's API to translate a batch of articles in JSON mode.
+    Tries each model in MODEL_CHAIN sequentially. If a model fails, is rate-limited,
+    or is not found, falls back to the next model in the chain.
     """
-    url = "http://127.0.0.1:8000/translate"
+    api_key = os.environ.get(
+        "GEMINI_API_KEY", "AIzaSyBUVV6-n_nbHW84hg8blEegy8jtEYBPf4g"
+    )
+    headers = {"Content-Type": "application/json"}
+    user_prompt = json.dumps(articles, ensure_ascii=False)
 
-    # Translate title
-    translated_title = ""
-    if title.strip():
-        payload = {"text": title.strip()}
-        try:
-            resp = requests.post(url, json=payload, timeout=60)
-            resp.raise_for_status()
-            translated_title = resp.json().get("translated_text", "").strip()
-        except Exception as e:
-            logger.error(f"Custom translation API failed for title: {e}")
-            translated_title = title.strip()
+    last_err = None
+    for model in MODEL_CHAIN:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
-    # Translate body
-    translated_body = ""
-    if body.strip():
-        payload = {"text": body.strip()}
-        try:
-            resp = requests.post(url, json=payload, timeout=60)
-            resp.raise_for_status()
-            translated_body = resp.json().get("translated_text", "").strip()
-        except Exception as e:
-            logger.error(f"Custom translation API failed for body: {e}")
-            translated_body = body.strip()
+        for attempt in range(retries_per_model):
+            try:
+                # Build payload dynamically based on caches
+                payload = build_payload(user_prompt, model)
 
-    if translated_title and translated_body:
-        return f"{translated_title}\n{translated_body}"
-    elif translated_title:
-        return translated_title
+                logger.info(
+                    f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
+                )
+                resp = requests.post(url, json=payload, headers=headers, timeout=120)
+
+                # Check for bad request due to unsupported configurations
+                if resp.status_code == 400:
+                    error_text = resp.text
+                    retry_needed = False
+
+                    if (
+                        "responseSchema" in error_text
+                        and model not in SCHEMA_UNSUPPORTED_MODELS
+                    ):
+                        logger.warning(
+                            f"Model {model} returned 400 with responseSchema. Registering model as schema-unsupported."
+                        )
+                        SCHEMA_UNSUPPORTED_MODELS.add(model)
+                        retry_needed = True
+
+                    if (
+                        "thinkingConfig" in error_text or "thinkingBudget" in error_text
+                    ) and model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
+                        logger.warning(
+                            f"Model {model} returned 400 with thinkingConfig. Registering model as thinkingConfig-unsupported."
+                        )
+                        THINKING_CONFIG_UNSUPPORTED_MODELS.add(model)
+                        retry_needed = True
+
+                    if retry_needed:
+                        # Rebuild payload and retry immediately
+                        retry_payload = build_payload(user_prompt, model)
+                        resp = requests.post(
+                            url, json=retry_payload, headers=headers, timeout=120
+                        )
+
+                # Check for Rate Limit (HTTP 429)
+                if resp.status_code == 429:
+                    sleep_time = backoff_factor * (attempt + 1)
+                    logger.warning(
+                        f"Rate limit (429) hit for model {model}. Sleeping for {sleep_time} seconds before retry..."
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                # If it's a 404 (model not found) or 403 (permission / quota issue), skip this model immediately
+                if resp.status_code in (403, 404):
+                    logger.warning(
+                        f"Model {model} returned HTTP {resp.status_code}. Skipping this model..."
+                    )
+                    break
+
+                resp.raise_for_status()
+                res_data = resp.json()
+
+                candidates = res_data.get("candidates", [])
+                if not candidates:
+                    raise ValueError(f"No candidates returned from model {model}")
+
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if not parts:
+                    raise ValueError(f"No parts found in candidate from model {model}")
+
+                content_text = parts[0].get("text", "").strip()
+
+                if content_text.startswith("```"):
+                    content_text = re.sub(
+                        r"^```(?:json)?\n", "", content_text, flags=re.IGNORECASE
+                    )
+                    content_text = re.sub(r"\n```$", "", content_text)
+                content_text = content_text.strip()
+
+                result = json.loads(content_text)
+                translations_list = result.get("translations", [])
+
+                mapped_results = {}
+                for item in translations_list:
+                    url_key = item.get("url")
+                    if url_key:
+                        mapped_results[url_key] = {
+                            "title": item.get("title", "").strip(),
+                            "body": item.get("body", "").strip(),
+                        }
+                return mapped_results
+
+            except Exception as e:
+                logger.error(f"Error calling translation API with model {model}: {e}")
+                last_err = e
+                if attempt < retries_per_model - 1:
+                    sleep_time = backoff_factor * (attempt + 1)
+                    logger.info(f"Retrying model {model} in {sleep_time} seconds...")
+                    time.sleep(sleep_time)
+                else:
+                    logger.warning(
+                        f"All attempts for model {model} failed. Falling back to next model..."
+                    )
+
+    if last_err:
+        raise last_err
     else:
-        return translated_body
-
-
-def translate_single_article_task(
-    url: str, title: str, body: str
-) -> tuple[str, str, str]:
-    """Helper task to translate a single article."""
-    logger.info(f"Translating article: {title[:50]}...")
-    if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", title, re.IGNORECASE):
-        # Do not translate standard SEC filing markers
-        return url, title, ""
-    else:
-        translated_text = translate_article(title, body)
-        if not translated_text:
-            return url, "", ""
-
-        parts = translated_text.split("\n", 1)
-        translated_title = parts[0].strip()
-        translated_body = parts[1].strip() if len(parts) > 1 else ""
-        return url, translated_title, translated_body
+        raise ValueError(
+            "Failed to translate batch: All fallback models in the chain failed."
+        )
 
 
 def translate_new_articles(
@@ -152,6 +335,8 @@ def translate_new_articles(
 
     # Gather items to translate
     to_translate = []
+    updated = False
+
     for block in blocks:
         url, title, body = parse_article_block(block)
         if not url:
@@ -160,32 +345,66 @@ def translate_new_articles(
             continue
         if url in cache:
             continue
-        to_translate.append((url, title, body))
+
+        # Rule for SEC filings (8-K, 10-K, 10-Q, SEC Filing): do not translate body, cache immediately
+        if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", title, re.IGNORECASE):
+            logger.info(f"Skipping translation for SEC filing marker: {title[:50]}...")
+            cache[url] = {"title": title.strip(), "body": ""}
+            updated = True
+            continue
+
+        to_translate.append({"url": url, "title": title, "body": body})
 
     if not to_translate:
+        if updated:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=2)
         logger.info("No new translations needed.")
         return
 
-    logger.info(f"Translating {len(to_translate)} articles sequentially...")
-    updated = False
+    logger.info(f"Translating {len(to_translate)} articles in batches...")
 
-    for url, title, body in to_translate:
+    batch_size = 10
+    batches = [
+        to_translate[i : i + batch_size]
+        for i in range(0, len(to_translate), batch_size)
+    ]
+
+    for batch_idx, batch in enumerate(batches):
         try:
-            res_url, trans_title, trans_body = translate_single_article_task(
-                url, title, body
-            )
-            if trans_title:
-                cache[res_url] = {"title": trans_title, "body": trans_body}
-                updated = True
-            else:
-                logger.warning(f"Translation failed or returned empty for URL: {url}")
+            # Enforce 2-second cooldown delay between calls to respect RPM 15
+            if batch_idx > 0:
+                logger.info(
+                    "Sleeping 2 seconds to avoid exceeding RPM 15 rate limit..."
+                )
+                time.sleep(2.0)
+
+            translations = call_gemini_translator_api(batch)
+
+            batch_updated = False
+            for article in batch:
+                url = article["url"]
+                if url in translations:
+                    cache[url] = translations[url]
+                    batch_updated = True
+                    updated = True
+                else:
+                    logger.warning(f"Translation output missing for url: {url}")
+
+            if batch_updated:
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=2)
+                logger.info(
+                    f"Incremental translation cache saved for batch {batch_idx + 1}/{len(batches)}."
+                )
+
         except Exception as e:
-            logger.error(f"Error during translation for URL {url}: {e}")
+            logger.error(f"Error during translation of batch {batch_idx + 1}: {e}")
 
     if updated:
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
-        logger.info(f"Updated translation cache saved containing {len(cache)} items.")
+        logger.info(f"Final translation cache saved containing {len(cache)} items.")
 
 
 def extract_urls_from_report(report_file: str) -> List[str]:
@@ -320,7 +539,6 @@ def generate_korean_full_draft(
         ) or norm_header == normalize_category_header("### 주간 일정"):
             ko_sections.append("### 주간 일정\n" + "\n".join(lines[1:]))
         else:
-            # Report header or other metadata
             ko_sections.append(sec_strip)
 
     ko_content = "\n\n".join(ko_sections)
@@ -328,81 +546,6 @@ def generate_korean_full_draft(
         f.write(ko_content)
     logger.info(f"Generated Korean full report draft at {ko_draft_file}")
     return True
-
-
-def is_server_healthy() -> bool:
-    try:
-        resp = requests.get("http://127.0.0.1:8000/", timeout=1)
-        if resp.status_code == 200:
-            data = resp.json()
-            return data.get("status") == "ok"
-    except Exception:
-        pass
-    return False
-
-
-def start_translation_server() -> Optional[subprocess.Popen]:
-    """Starts the cortex uvicorn server in a subprocess."""
-    if is_server_healthy():
-        logger.info("Translation server is already running and healthy.")
-        return None
-
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cortex_dir = os.path.join(os.path.dirname(project_root), "cortex")
-    python_bin = os.path.join(cortex_dir, ".venv", "bin", "python")
-
-    logger.info("Starting translation server...")
-    # Launch uvicorn as a subprocess without reload
-    proc = subprocess.Popen(
-        [
-            python_bin,
-            "-m",
-            "uvicorn",
-            "app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8000",
-        ],
-        cwd=cortex_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    # Wait for the server to become healthy (max 30 seconds)
-    start_time = time.time()
-    while time.time() - start_time < 30:
-        if is_server_healthy():
-            logger.info(f"Translation server started successfully (pid: {proc.pid}).")
-            return proc
-        if proc.poll() is not None:
-            logger.error("Translation server process exited prematurely.")
-            break
-        time.sleep(0.5)
-
-    logger.error("Failed to start translation server within timeout.")
-    try:
-        proc.terminate()
-    except Exception:
-        pass
-    return None
-
-
-def stop_translation_server(proc: Optional[subprocess.Popen]) -> None:
-    """Stops the uvicorn subprocess."""
-    if proc is None:
-        return
-    logger.info(f"Stopping translation server (pid: {proc.pid})...")
-    try:
-        proc.terminate()
-        proc.wait(timeout=10)
-        logger.info("Translation server stopped successfully.")
-    except subprocess.TimeoutExpired:
-        logger.warning("Translation server terminate timed out, killing process...")
-        proc.kill()
-        proc.wait()
-    except Exception as e:
-        logger.error(f"Error stopping translation server: {e}")
 
 
 def run_translator(report_type: str = "full") -> None:
@@ -431,78 +574,68 @@ def run_translator(report_type: str = "full") -> None:
 
     logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
 
-    # Spin up the translation server if not already running
-    server_process = start_translation_server()
-    try:
-        if report_type == "incremental":
-            translate_new_articles(state_file, cache_file)
+    if report_type == "incremental":
+        translate_new_articles(state_file, cache_file)
 
-        elif report_type == "premarket":
-            # 1. Prioritize selected premarket articles
-            en_report = os.path.join(data_dir, f"premarket_report_{today_str}.txt")
+    elif report_type == "premarket":
+        # 1. Prioritize selected premarket articles
+        en_report = os.path.join(data_dir, f"premarket_report_{today_str}.txt")
 
-            # Fallback to latest premarket file if not exists
-            if not os.path.exists(en_report):
-                files = sorted(
-                    glob.glob(os.path.join(data_dir, "premarket_report_*.txt"))
-                )
-                if files:
-                    en_report = files[-1]
+        # Fallback to latest premarket file if not exists
+        if not os.path.exists(en_report):
+            files = sorted(glob.glob(os.path.join(data_dir, "premarket_report_*.txt")))
+            if files:
+                en_report = files[-1]
 
-            premarket_urls = extract_urls_from_report(en_report)
-            logger.info(
-                f"Premarket report selected {len(premarket_urls)} articles for translation."
-            )
+        premarket_urls = extract_urls_from_report(en_report)
+        logger.info(
+            f"Premarket report selected {len(premarket_urls)} articles for translation."
+        )
 
-            # Translate only selected premarket articles first
-            translate_new_articles(state_file, cache_file, limit_urls=premarket_urls)
+        # Translate only selected premarket articles first
+        translate_new_articles(state_file, cache_file, limit_urls=premarket_urls)
 
-            # Generate KST premarket draft and format it immediately
-            ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
-            generate_korean_premarket_draft(en_report, ko_draft, cache_file)
+        # Generate KST premarket draft and format it immediately
+        ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
+        generate_korean_premarket_draft(en_report, ko_draft, cache_file)
 
-            ko_output_dir = os.path.join(data_dir, "ko")
-            os.makedirs(ko_output_dir, exist_ok=True)
-            ko_final_report = os.path.join(
-                ko_output_dir, f"alpha_signal_premarket_{today_str}_ko.md"
-            )
+        ko_output_dir = os.path.join(data_dir, "ko")
+        os.makedirs(ko_output_dir, exist_ok=True)
+        ko_final_report = os.path.join(
+            ko_output_dir, f"alpha_signal_premarket_{today_str}_ko.md"
+        )
 
-            run_formatter(ko_draft, ko_final_report, lang="ko")
-            logger.info(
-                f"Successfully generated final Korean premarket report at {ko_final_report}"
-            )
+        run_formatter(ko_draft, ko_final_report, lang="ko")
+        logger.info(
+            f"Successfully generated final Korean premarket report at {ko_final_report}"
+        )
 
-            # 2. In the background, translate all remaining premarket articles
-            logger.info("Proceeding to translate all remaining articles in state...")
-            translate_new_articles(state_file, cache_file)
+        # 2. In the background, translate all remaining premarket articles
+        logger.info("Proceeding to translate all remaining articles in state...")
+        translate_new_articles(state_file, cache_file)
 
-        elif report_type == "full":
-            # 1. Translate all articles to complete the cache
-            translate_new_articles(state_file, cache_file)
+    elif report_type == "full":
+        # 1. Translate all articles to complete the cache
+        translate_new_articles(state_file, cache_file)
 
-            # 2. Read full English report
-            en_report = os.path.join(data_dir, f"final_report_{today_str}.txt")
-            if not os.path.exists(en_report):
-                files = sorted(glob.glob(os.path.join(data_dir, "final_report_*.txt")))
-                if files:
-                    en_report = files[-1]
+        # 2. Read full English report
+        en_report = os.path.join(data_dir, f"final_report_{today_str}.txt")
+        if not os.path.exists(en_report):
+            files = sorted(glob.glob(os.path.join(data_dir, "final_report_*.txt")))
+            if files:
+                en_report = files[-1]
 
-            ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
-            generate_korean_full_draft(en_report, ko_draft, cache_file)
+        ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
+        generate_korean_full_draft(en_report, ko_draft, cache_file)
 
-            ko_output_dir = os.path.join(data_dir, "ko")
-            os.makedirs(ko_output_dir, exist_ok=True)
-            ko_final_report = os.path.join(
-                ko_output_dir, f"alpha_signal_{today_str}_ko.md"
-            )
+        ko_output_dir = os.path.join(data_dir, "ko")
+        os.makedirs(ko_output_dir, exist_ok=True)
+        ko_final_report = os.path.join(ko_output_dir, f"alpha_signal_{today_str}_ko.md")
 
-            run_formatter(ko_draft, ko_final_report, lang="ko")
-            logger.info(
-                f"Successfully generated final Korean full report at {ko_final_report}"
-            )
-    finally:
-        # Guarantee the server is stopped if we launched it
-        stop_translation_server(server_process)
+        run_formatter(ko_draft, ko_final_report, lang="ko")
+        logger.info(
+            f"Successfully generated final Korean full report at {ko_final_report}"
+        )
 
 
 if __name__ == "__main__":
