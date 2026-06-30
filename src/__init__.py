@@ -291,14 +291,18 @@ def run_all(report_type: str = "full"):
                 else f"final_report_{today_str}.txt"
             ),
         )
-        out_file = os.path.join(
-            data_dir,
-            (
-                f"alpha_signal_premarket_{today_str}.md"
-                if report_type == "premarket"
-                else f"alpha_signal_{today_str}.md"
-            ),
-        )
+
+        if report_type == "premarket":
+            premarket_dir = os.path.join(data_dir, "premarket")
+            os.makedirs(premarket_dir, exist_ok=True)
+            out_file = os.path.join(
+                premarket_dir, f"alpha_signal_premarket_{today_str}.md"
+            )
+        else:
+            report_dir = os.path.join(data_dir, "report")
+            os.makedirs(report_dir, exist_ok=True)
+            out_file = os.path.join(report_dir, f"alpha_signal_{today_str}.md")
+
         success = run_formatter(cio_file, out_file, lang="en")
 
         if success:
@@ -336,7 +340,7 @@ def run_all(report_type: str = "full"):
 
 
 def _cleanup_data_files(data_dir: str):
-    """Deletes all files in data_dir except alpha_signal_*.md"""
+    """Deletes all files in data_dir except *_state_pre.json and final reports"""
     if not os.path.exists(data_dir):
         return
 
@@ -344,10 +348,10 @@ def _cleanup_data_files(data_dir: str):
     for file_path in all_files:
         if os.path.isfile(file_path):
             filename = os.path.basename(file_path)
-            # Keep the final alpha signal markdown files and premarket cache file
+            # Keep the final alpha signal reports and key premarket state cache files
             if not (
                 (filename.startswith("alpha_signal_") and filename.endswith(".md"))
-                or filename == "extracted_state_pre.json"
+                or filename in ("extracted_state_pre.json", "translated_state_pre.json")
             ):
                 try:
                     os.remove(file_path)

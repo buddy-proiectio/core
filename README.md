@@ -177,7 +177,7 @@ graph TD
 - **Batch Processing**: Bundles articles in groups of 10 to minimize requests, staying safely under the 15 RPM and 1.5K RPD limits of the Google AI Studio free tier.
 - **Enforced JSON Schema Mode**: Uses JSON mode and structured response schemas to guarantee parsing reliability without structural extraction failures.
 - **Translation State Caching**: Maintains `translated_state_YYYYMMDD.json` mapping URLs to translations to avoid redundant translation API requests.
-- **Korean Markdown Localizer**: Converts categories to Korean (e.g., General -> 경제 일반) and formats schedule dates into Korean KST representations, saving the final output in `data/ko/alpha_signal_[premarket_]YYYYMMDD_ko.md`.
+- **Korean Markdown Localizer**: Converts categories to Korean (e.g., General -> 경제 일반) and formats schedule dates into Korean KST representations, saving the final output in `data/report/alpha_signal_YYYYMMDD_ko.md` or `data/premarket/alpha_signal_premarket_YYYYMMDD_ko.md`.
 
 ### Orchestration (`src/__init__.py`)
 

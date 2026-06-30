@@ -554,7 +554,33 @@ def run_translator(report_type: str = "full") -> None:
         today_str = custom_date
 
     state_file = os.path.join(data_dir, f"extracted_state_{today_str}.json")
-    cache_file = os.path.join(data_dir, f"translated_state_{today_str}.json")
+
+    if report_type == "premarket":
+        cache_file = os.path.join(data_dir, "translated_state_pre.json")
+    else:
+        cache_file = os.path.join(data_dir, f"translated_state_{today_str}.json")
+
+        # Merge premarket translation cache if it exists from previous premarket runs
+        pre_cache_file = os.path.join(data_dir, "translated_state_pre.json")
+        if os.path.exists(pre_cache_file):
+            try:
+                with open(pre_cache_file, "r", encoding="utf-8") as f:
+                    pre_cache = json.load(f)
+
+                standard_cache = {}
+                if os.path.exists(cache_file):
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        standard_cache = json.load(f)
+
+                merged_cache = {**pre_cache, **standard_cache}
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(merged_cache, f, ensure_ascii=False, indent=2)
+
+                logger.info(
+                    f"Merged {len(pre_cache)} translation keys from translated_state_pre.json into today's cache."
+                )
+            except Exception as e:
+                logger.error(f"Failed to merge translated_state_pre.json: {e}")
 
     logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
 
@@ -583,7 +609,7 @@ def run_translator(report_type: str = "full") -> None:
         ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
         generate_korean_premarket_draft(en_report, ko_draft, cache_file)
 
-        ko_output_dir = os.path.join(data_dir, "ko")
+        ko_output_dir = os.path.join(data_dir, "premarket")
         os.makedirs(ko_output_dir, exist_ok=True)
         ko_final_report = os.path.join(
             ko_output_dir, f"alpha_signal_premarket_{today_str}_ko.md"
@@ -612,7 +638,7 @@ def run_translator(report_type: str = "full") -> None:
         ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
         generate_korean_full_draft(en_report, ko_draft, cache_file)
 
-        ko_output_dir = os.path.join(data_dir, "ko")
+        ko_output_dir = os.path.join(data_dir, "report")
         os.makedirs(ko_output_dir, exist_ok=True)
         ko_final_report = os.path.join(ko_output_dir, f"alpha_signal_{today_str}_ko.md")
 
