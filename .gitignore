@@ -36,6 +36,7 @@ MANIFEST
 logs/
 data/
 memory/
+config/
 
 # OS generated files
 .DS_Store
