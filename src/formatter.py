@@ -1,24 +1,24 @@
 """
-The Decoupled Markdown Formatter for Buddy Core
+Formatter module for Buddy Core.
 
-Handles structural markdown adjustments, smart line breaks, header styling,
-Topline Signals separator removal, and company name mapping for earnings calls.
+This module formats and structures daily markdown reports. It builds timezone-aligned
+weekly schedules (resolving the midnight timezone distortion bug), standardizes earnings
+call labels, and enforces strict markdown compliance (line breaks, escaped math variables).
 """
 
-import os
-import sys
-import re
-import json
 import argparse
-import pytz
+import json
+import os
+import re
+import sys
 from datetime import datetime, timedelta
 from typing import Optional
+import pytz
+from shared.shared_logger import setup_logger
+from shared.time_utils import parse_utc_time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from shared.shared_logger import setup_logger
-from shared.time_utils import parse_utc_time
 
 LOG_FILE = "logs/formatter.log"
 
@@ -137,6 +137,7 @@ def build_english_weekly_schedule(
 def build_korean_weekly_schedule(
     events: list, base_date_str: Optional[str] = None
 ) -> str:
+    # WEEKDAYS_KO mapping: Chronological mapping to full Korean weekday names for publishing aesthetics.
     WEEKDAYS_KO = [
         "월요일",
         "화요일",
@@ -146,6 +147,8 @@ def build_korean_weekly_schedule(
         "토요일",
         "일요일",
     ]
+    # CURRENCY_TO_COUNTRY mapping: Translate ISO currencies to Korean localized country/region terms
+    # to provide clear macroeconomic context to South Korean readers.
     CURRENCY_TO_COUNTRY = {
         "USD": "미국",
         "KRW": "한국",
@@ -157,6 +160,8 @@ def build_korean_weekly_schedule(
         "CNY": "중국",
     }
 
+    # TICKER_TO_KOREAN_NAME mapping: Maps stock symbols to their Korean corporate titles
+    # using targets from market_map_targets.json (e.g. NVDA -> 엔비디아).
     TICKER_TO_KOREAN_NAME = {}
     try:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -215,6 +220,9 @@ def build_korean_weekly_schedule(
 
         country = CURRENCY_TO_COUNTRY.get(currency, currency)
 
+        # Format calendar descriptions for Korean-language newsletters.
+        # - "미국 증시 휴장" indicates US Market Holiday.
+        # - "실적발표" indicates Corporate Earnings Call.
         if importance == "holiday":
             evt_str = (
                 f"미국 증시 휴장 - {korean_name}"
@@ -222,7 +230,7 @@ def build_korean_weekly_schedule(
                 else f"미국 증시 휴장 - {name}"
             )
         elif importance == "earnings":
-            # Map ticker NVDA -> 엔비디아
+            # Extract stock symbol and replace with mapped Korean corporate name (e.g. MSFT -> 마이크로소프트)
             ticker = name.split()[0].upper()
             company_name = TICKER_TO_KOREAN_NAME.get(ticker, ticker)
             evt_str = f"{company_name} 실적발표"
@@ -364,6 +372,7 @@ def format_content(
         # 1.2) Smart markdown line break ('<br />')
         # If this line is part of a list/schedule and the NEXT line is not empty and not separator
         date_pattern = r"^(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*\("
+        # date_pattern_ko: Matches Korean date syntax (e.g. "12월 25일 (목)") to inject paragraph breaks.
         date_pattern_ko = r"^(\d+)월\s+(\d+)일\s*\("
 
         is_target_line = (

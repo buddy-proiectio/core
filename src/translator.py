@@ -1,27 +1,31 @@
 """
-The Translator Agent (English to Korean translation using Google AI Studio)
+Translator module for Buddy Core.
 
-Translates extracted articles in batches using Google Gemini or Gemma models,
-manages translation caching to avoid redundant calls, and formats the final Korean reports.
+This module translates English markdown reports to publication-ready Korean reports.
+It leverages Google AI Studio's Gemma model chain (defaulting to gemma-4-31b) in JSON mode,
+maintains translation caches to minimize redundant translation costs, and localizes schedules.
 """
 
+import argparse
+import glob
+import json
 import os
 import re
 import sys
-import json
-import glob
-import argparse
-import requests
-import pytz
 import time
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+import pytz
+import requests
+from formatter import run_formatter
+from shared.env_utils import load_env_file
+from shared.shared_logger import setup_logger
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.shared_logger import setup_logger
-from formatter import run_formatter
+# Populate os.environ with local config prior to bootstrapping dependencies.
+load_env_file()
 
 LOG_FILE = "logs/translator.log"
 logger = setup_logger(LOG_FILE, __name__)
@@ -47,6 +51,8 @@ SCHEMA_UNSUPPORTED_MODELS = set()
 # to avoid wasting API calls on subsequent batches.
 THINKING_CONFIG_UNSUPPORTED_MODELS = set()
 
+# Category translation mapping: Translates English section headers to their official Korean equivalent
+# used for publish-ready capital market reports in South Korea (e.g. "### General" -> "### 경제 일반").
 CATEGORY_MAPPING = {
     "### General": "### 경제 일반",
     "### Bitcoin": "### 비트코인",
@@ -66,6 +72,7 @@ def normalize_category_header(header: str) -> str:
     return header.replace(" ", "").replace("/", "").strip()
 
 
+# Precompute a normalized lookup mapping to resolve raw spaces and forward slashes safely.
 NORM_MAPPING = {normalize_category_header(k): v for k, v in CATEGORY_MAPPING.items()}
 
 
@@ -83,53 +90,28 @@ def parse_article_block(block: str) -> tuple[str, str, str]:
     return "", "", ""
 
 
-TRANSLATION_SYSTEM_PROMPT = """You are a professional financial translator specializing in translating US financial news and articles into high-quality, professional Korean for the South Korean capital markets (Seoul/Yeouido financial district standard).
+# Minimal fallback system prompt for the open-source release.
+# Instructs the model to return JSON translations without complex capital-market noise filters.
+DEFAULT_TRANSLATION_SYSTEM_PROMPT = """You are a professional financial translator specializing in translating US financial news and articles into high-quality, professional Korean.
+You MUST output your response strictly as a JSON object containing a "translations" key mapped to an array of translated articles. Each item in the array must preserve the "url" key and contain the translated "title" and "body" keys."""
 
-Your task is to translate the provided JSON array of articles.
-You MUST output your response strictly as a JSON object containing a "translations" key mapped to an array of translated articles. Each item in the array must preserve the "url" key and contain the translated "title" and "body" keys.
+# Load the proprietary translation system prompt dynamically if it exists.
+# Since config/ is gitignored, this allows local runs to keep proprietary translation IP.
+TRANSLATION_SYSTEM_PROMPT = DEFAULT_TRANSLATION_SYSTEM_PROMPT
 
-Follow these strict Core Rules for translation:
-
-[Core Rules]
-Rule 1. Headline and Title Processing (Structural De-Noising)
-- Structural Noise Elimination: Completely destroy English-style narrative structures (e.g., 'Here's Why~', 'Here's How Much~') and keep only the core conclusions. Clean up and organize unnecessary punctuation marks (dashes '-', colons ':') to fit the Korean journalistic tone.
-  Original: Broadcom shares plunge after AI forecast disappoints: Here's Why
-  Replacement: AI 전망치 실망감에 브로드컴 주가 폭락
-- LaTeX Exclusion: Do not use LaTeX syntax ($, $$) anywhere in titles or body text for percentages (e.g., use 10% instead of $10\%$), multiples, or simple numbers. Maintain only standard markdown formatting.
-
-Rule 2. Currency Units and Numeric Conversion (Financial Localization)
-- South Korean Capital Market Notation Matching: Do not perform currency conversion for USD Billions ($B, billion) and Millions ($M, million). Instead, convert them into Korean-style numbers keeping the USD unit without error.
-  Example: $12.5bn / $12.5B ➡️ 125억 달러
-  Example: $35M ➡️ 3,500만 달러
-- Arabic Numeral Unification: Convert ordinal numbers or written English text (e.g., "Five hundred", "Two") into intuitive Arabic numerals (e.g., "500", "2") for readability.
-
-Rule 3. Corporate Names, Persons, and Proper Nouns (Proper Noun Lifecycle)
-- First Exposure (Buildup): When global company names, major media outlets, or benchmark indices first appear in the text, define them precisely by combining the Korean common name and the original English name in parentheses.
-  Example: Target ➡️ 타깃(Target)
-  Example: SPS Commerce ➡️ 에스피에스 커머스(SPS Commerce)
-- Subsequent Exposure (Streamlining): Once a proper noun has been defined at its first exposure, strip away all complex English parentheses, tickers (e.g., NASDAQ:, NYSE:, Ticker), and original English names. Use only the clean Korean name.
-  Example from 2nd exposure: 타깃(Target) or Target (NYSE:TGT) ➡️ 타깃
-- No NER Segmentation: Do not segment unified institutional names into separate person names and institutions (e.g., do not split "J.P. Morgan" into "JP's analyst Morgan"; treat it as one complete institution "JP모건").
-- Emotional Alignment of Persons and Titles: Rearrange English-style post-positional titles to match the Korean word order structure ("Title + Name") and clearly attribute quotes.
-  Original: Brian Cornell, the retailer's executive chairman
-  Replacement: 이 대형 유통업체의 이사회 의장인 브라이언 코넬
-
-Rule 4. Financial/Investment Terminology and Business Verbs (Domain-Specific Context)
-- Combined Format Mapping: Translate key financial metrics in tech, SaaS, and retail sectors into a combined format of 'English abbreviation + Korean definition' to maintain capital market standards.
-  Example: ARR ➡️ 연간반복매출(ARR), Capex ➡️ 자본지출(Capex), LTV ➡️ 고객생애가치(LTV), CAC ➡️ 고객획득비용(CAC)
-- Business Context Free Translation: Translate verbs or expressions that sound awkward when translated literally in macroeconomic contexts into sophisticated Korean investment newsletter/research letter tones.
-  Example: greenback ➡️ 미국 달러화 (Never translate literally as greenback, and avoid incorrect translations like funding holdings)
-  Example: parabolic run ➡️ 포물선형 급등 장세
-  Example: torpedo ➡️ 치명적인 위험 요인
-
-Rule 5. Formatting Integrity and Output Specification (Output Integrity)
-- Sentence Ending Fixation: Every single sentence must end with polite, formal Korean endings (~습니다, ~합니다). Do not omit sentence endings or end with nominal forms (~함, ~음).
-- Zero Skip: Every single article in the input array must be translated and included in the output response without exception.
-- Pure JSON Output: Return only the pure JSON data without conversational filler, preambles, or markdown code block ticks (```json).
-
-Rule 6. Direct JSON Response (No Chain-of-Thought)
-- No Chain-of-Thought / Thinking: Do not output any thinking process, internal reasoning, or chain-of-thought text. Skip reasoning entirely and proceed directly to outputting the final translations JSON array.
-"""
+try:
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    prompt_file_path = os.path.join(
+        project_root, "config", "prompts", "translation_system_prompt.txt"
+    )
+    if os.path.exists(prompt_file_path):
+        with open(prompt_file_path, "r", encoding="utf-8") as f:
+            custom_prompt = f.read().strip()
+            if custom_prompt:
+                TRANSLATION_SYSTEM_PROMPT = custom_prompt
+except Exception:
+    # Fail silently to maintain execution flow with the default prompt
+    pass
 
 
 def build_payload(user_prompt: str, model: str) -> dict:
@@ -184,9 +166,11 @@ def call_gemini_translator_api(
     Tries each model in MODEL_CHAIN sequentially. If a model fails, is rate-limited,
     or is not found, falls back to the next model in the chain.
     """
-    api_key = os.environ.get(
-        "GEMINI_API_KEY", "AIzaSyBUVV6-n_nbHW84hg8blEegy8jtEYBPf4g"
-    )
+    # Fetch the Gemini API Key from environment variables.
+    # If the key is not defined, we raise a ValueError to prevent empty/failing API calls.
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable is not defined.")
     headers = {"Content-Type": "application/json"}
     user_prompt = json.dumps(articles, ensure_ascii=False)
 

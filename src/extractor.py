@@ -1,35 +1,32 @@
 """
-The Extractor (Exact Text Extraction Agent)
+Extractor module for Buddy Core.
 
-This script processes gathered data using LLM-powered agents to extract structured
-information, entities, and key insights. It leverages CrewAI to orchestrate
-specialized extraction tasks and saves the refined results to a daily rolling
-JSON file using the local timezone.
+This module extracts deeply actionable KPIs and raw fact sentences from sorted articles
+using a local Ollama LLM (defaults to llama3.1). It performs strict text pre-cleaning
+(stripping sheets/captions), enforces semantic deduplication using Sentence-Transformers,
+and manages incremental state files to optimize processing cycles.
 """
 
-import os
+import argparse
 import json
 import logging
-import warnings
+import os
 import re
-import pytz
 import sys
-import argparse
 import uuid
+import warnings
+from datetime import datetime
+import typing
+from sentence_transformers import SentenceTransformer
+import pytz
+import requests
+import torch
+from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
+from prompts import AGENT_CONFIGS, get_agent_config
+from shared.shared_logger import setup_logger
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from datetime import datetime
-import torch
-import typing
-import requests
-from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
-from sentence_transformers import SentenceTransformer
-
-from shared.shared_logger import setup_logger
-
-from prompts import get_agent_config, AGENT_CONFIGS
 
 # Suppress HuggingFace and Sentence-Transformers warnings/logs completely
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -37,7 +34,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
 warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", category=UserWarning, module="multiprocessing.resource_tracker")
+warnings.filterwarnings(
+    "ignore", category=UserWarning, module="multiprocessing.resource_tracker"
+)
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("httpx").setLevel(logging.ERROR)
@@ -269,6 +268,14 @@ def strip_tables(text: str) -> str:
 def verify_exact_match(output: str, original_content: str) -> bool:
     """
     Verifies that every sentence in the LLM output is an exact substring of the original article content.
+    This strict validation acts as a guard against LLM hallucination and content leakage.
+
+    It operates in two stages:
+    1. Normalization: Both texts are stripped of formatting, tables, and captions. They are normalized to lowercase
+       and unified into single-spaced runs of text.
+    2. Substring Matching: Each extracted sentence is split and verified as an exact substring of the parent content.
+       If a match fails due to minor punctuation or symbol variations introduced by the model, a secondary fallback
+       check compares them after stripping all non-alphanumeric characters from both the sentence and the original content.
     """
     if not output or not original_content:
         return False
@@ -474,7 +481,10 @@ def run_extractor(
                 logger.info(f"Skipping empty/duplicate-only file: {filepath}")
                 continue
 
-            # Semantic Deduplication
+            # Semantic Deduplication:
+            # Prevents redundant LLM runs for articles reporting the exact same news (e.g. syndications, rewrites).
+            # We construct a text fingerprint combining the headline and the first few sentences,
+            # generate dense vector embeddings, and measure Cosine Similarity against already accepted articles.
             unique_articles = []
             accepted_embeddings: list[typing.Any] = []
             sem_dupes_count = 0
@@ -483,17 +493,18 @@ def run_extractor(
                 article_url = article.get("url", "")
                 title = article.get("title", "")
                 content = article.get("content", "")
-                # Create a fingerprint: Title + First ~3 sentences
+                # Generate a news fingerprint using the title and article preview.
                 content_preview = " ".join(content.split(".")[:3])
                 fingerprint = f"{title}. {content_preview}"
 
-                # Encode into vector
+                # Encode fingerprint text into a dense vector embedding using SentenceTransformer
                 emb = embedder.encode(fingerprint, convert_to_tensor=True)
 
                 is_duplicate = False
                 if accepted_embeddings:
-                    # Compute similarity against previously accepted articles using model.similarity
-                    # which returns an N x M tensor.
+                    # Stack all previously accepted article embeddings into a single PyTorch tensor.
+                    # Compute the cosine similarity score between the current embedding and all stored embeddings.
+                    # If the highest similarity exceeds the defined threshold (e.g. 0.82), we classify it as a duplicate.
                     emb_tensor: typing.Any = emb
                     accepted_tensor = torch.stack(accepted_embeddings)  # type: ignore
                     embedder_any: typing.Any = embedder
@@ -573,6 +584,7 @@ def run_extractor(
     # Free embedding model / loky resources immediately after use
     try:
         from joblib.externals.loky import get_reusable_executor
+
         get_reusable_executor().shutdown(wait=True)
         logger.info("Successfully shut down loky reusable executor.")
     except Exception as e:

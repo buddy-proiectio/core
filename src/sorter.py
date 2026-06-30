@@ -1,20 +1,19 @@
 """
-The Sorter (Article Categorization & Routing Bot)
+Sorter module for Buddy Core.
 
-This script processes article data and organizes them into specific categories
-based on matched keywords. It applies a routing map to sort articles into
-predefined groups such as Bitcoin, AI, Semiconductor, and Software.
+This module routes raw incoming news articles into distinct mega-trends (AI, Bitcoin,
+Semiconductor, Aerospace, etc.) based on keyword scores defined in the configuration.
+It dynamically binds to configurations and routing parameters from prompts.py.
 """
 
+import glob
 import json
 import os
-import glob
 import sys
+from shared.shared_logger import setup_logger
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from shared.shared_logger import setup_logger
 
 LOG_FILE = "logs/sorter.log"
 
@@ -33,14 +32,25 @@ def sort_articles_by_category(articles: list) -> dict:
     # Negative keywords list to penalize non-investment/personal-finance noise
     negative_keywords = {
         "General": [
-            "how to apply", "refinance your", "best credit card", "retirement calculator",
-            "how to budget", "save money", "personal loan options", "mortgage tips for buyers",
-            "lifestyle advice", "53y man", "porsche 911", "tips to retire", "personal finance",
-            "how to retire", "credit card debt", "budgeting", "financial planner"
+            "how to apply",
+            "refinance your",
+            "best credit card",
+            "retirement calculator",
+            "how to budget",
+            "save money",
+            "personal loan options",
+            "mortgage tips for buyers",
+            "lifestyle advice",
+            "53y man",
+            "porsche 911",
+            "tips to retire",
+            "personal finance",
+            "how to retire",
+            "credit card debt",
+            "budgeting",
+            "financial planner",
         ],
-        "Software": [
-            "ui update", "how to install", "tutorial", "best theme"
-        ]
+        "Software": ["ui update", "how to install", "tutorial", "best theme"],
     }
 
     # Load categories and keywords directly from prompts.py configuration
@@ -100,7 +110,9 @@ def sort_articles_by_category(articles: list) -> dict:
 
         if max_score > 0:
             # Get all categories that achieved the max score
-            candidates = [cat for cat, score in category_scores.items() if score == max_score]
+            candidates = [
+                cat for cat, score in category_scores.items() if score == max_score
+            ]
             # Prioritize specific categories over 'Others' if there is a tie
             if len(candidates) > 1 and "Others" in candidates:
                 candidates.remove("Others")
@@ -192,6 +204,7 @@ def run_sorter(report_type: str = "full"):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="Sorter Agent")
     parser.add_argument(
         "--type",

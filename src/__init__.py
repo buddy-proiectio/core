@@ -1,29 +1,36 @@
 """
-Core processing modules for Buddy Core
+Orchestration and Main Execution Loop for the Buddy Core Pipeline.
+
+This module acts as the pipeline driver, pulling news data via SCP from the Sieve
+scraping server, managing active lock states to prevent duplicate executions,
+and triggering sequential pipeline runs (incremental, full, and premarket).
 """
 
+import argparse
+import glob
+import json
 import os
+import pytz
+import signal
+import subprocess
 import sys
+import time
+from datetime import datetime
+import holidays
+from cio import run_cio
+from extractor import run_extractor
+from formatter import run_formatter
+from shared.env_utils import load_env_file
+from shared.shared_logger import setup_logger
+from sorter import run_sorter
+from translator import run_translator
 
 # Add project root to sys.path to allow importing from 'shared' and local modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from sorter import run_sorter
-from extractor import run_extractor
-from cio import run_cio
-from formatter import run_formatter
-import subprocess
-import time
-import argparse
-import json
-import glob
-import pytz
-import holidays
-import signal
-from datetime import datetime
-from shared.shared_logger import setup_logger
-from translator import run_translator
+# Populate os.environ with local config prior to bootstrapping dependencies.
+load_env_file()
 
 logger = setup_logger(logger_name=__name__)
 
@@ -48,24 +55,28 @@ def is_us_trading_day() -> bool:
 
 def pull_data_from_cloud(report_type: str = "full"):
     """
-    Pull sieve's data from oracle cloud storage
+    Pulls sieve scraped news feed data from the Oracle Cloud instance.
+    Utilizes secure SCP transfer to download raw JSON data daily.
     """
     today = datetime.now(pytz.timezone("America/New_York")).strftime("%Y%m%d")
 
-    """
-    Change the following variables if you are not using the same environment as mine
-    """
-    ORACLE_IP_ADDRESS = "159.13.60.28"
-    ORACLE_SSH_KEY = "/Users/taehoonkwon/.ssh/oracle-cloud-ssh.key"
+    # Fetch Oracle instance credentials from environment variables to protect infrastructure configuration.
+    # We resolve the local user home directory dynamically rather than hardcoding.
+    ORACLE_IP_ADDRESS = os.environ.get("ORACLE_IP_ADDRESS", "159.13.60.28")
+    ORACLE_SSH_KEY = os.environ.get(
+        "ORACLE_SSH_KEY", os.path.expanduser("~/.ssh/oracle-cloud-ssh.key")
+    )
+
+    # Resolve local data directory dynamically relative to the project root
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    local_dir = os.path.join(project_root, "data")
 
     if report_type == "premarket":
         remote_file = f"/home/ubuntu/sieve/data/premarket_news_{today}.json"
-        local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/premarket_news_{today}.json"
     else:
         # Both 'full' and 'incremental' use the daily_news file
         remote_file = f"/home/ubuntu/sieve/data/daily_news_{today}.json"
-        local_dir = "/Users/taehoonkwon/workspaces/buddy/core/data"
         local_file = f"{local_dir}/daily_news_{today}.json"
 
     os.makedirs(local_dir, exist_ok=True)
@@ -159,7 +170,12 @@ def run_all(report_type: str = "full"):
         # but we can let it pass anytime.
         pass
 
-    # 2. Duplicate Execution Prevention (Lock File with Stale/Hung Process Validation)
+    # 2. Duplicate Execution Prevention & Stale Process Recovery
+    # Uses a local PID file to prevent concurrent pipeline runs. If a lock file exists,
+    # it inspects whether the active PID is alive using a liveness signal test (os.kill(pid, 0)).
+    # If the process is dead, it self-heals by removing the stale lock.
+    # If the process is alive but has been running for > 2 hours, it acts as a watchdog, sending SIGKILL
+    # to terminate the hung process and unblock subsequent scheduler runs.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     lock_file = os.path.join(project_root, "logs", "buddy.lock")
 
@@ -171,7 +187,8 @@ def run_all(report_type: str = "full"):
             lock_pid = None
 
         if lock_pid:
-            # Check if the process is actually running
+            # Check process liveness by sending a dummy signal (0).
+            # If the process does not exist, an OSError is caught and the process is known to be dead.
             is_running = False
             try:
                 os.kill(lock_pid, 0)

@@ -1,9 +1,10 @@
 """
-The Chief Investment Officer (CIO) Agent
+CIO module for Buddy Core.
 
-This script processes market indicators, weekly schedules, and extracted facts
-to generate a highly professional, billionaire-mentor styled daily commentary (Daily Point)
-and select the absolute most critical premarket news articles.
+This module synthesizes daily reports with a professional, billionaire-mentor styled narrative
+(Daily Point) and executes the Premarket 3D news selection system (Macro, Surprise, Trend).
+It leverages Google AI Studio's Gemini 3.5 Flash API (with Ollama llama3.1 fallbacks)
+for premarket scoring and floor/ceiling news limits.
 """
 
 import argparse
@@ -13,154 +14,87 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta
+from typing import Optional
 import pytz
 import requests
-from typing import Optional
+from shared.env_utils import load_env_file
+from shared.shared_logger import setup_logger
+from shared.time_utils import parse_utc_time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.shared_logger import setup_logger
-from shared.time_utils import parse_utc_time
+# Populate os.environ with local config prior to bootstrapping dependencies.
+load_env_file()
 
 LOG_FILE = "logs/cio.log"
 
 logger = setup_logger(LOG_FILE, __name__)
 
 # ==============================================================================
-# 1. AI Prompts & Templates
+# 1. AI Prompts & Templates (Dynamic & Fallback Configurations)
 # ==============================================================================
 
-# Daily Point Narrative Commentary System Prompt
-DAILY_COMMENTARY_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor who achieved absolute financial freedom through highly concentrated, long-term investments in structural mega-trends (Tech, Crypto, US Macro). 
-You are NOT a Wall Street analyst who writes safe reports for a salary. You are a practitioner with 'skin in the game' who actually built immense wealth by surviving market crashes and aggressively capitalizing on multi-year capital cycles.
-Your expertise lies in ignoring daily market noise and "Connecting the Dots" to find life-changing, asymmetric opportunities in the 2026 structural Mega Trends (e.g., AI infrastructure, crypto sovereign adoption, macro liquidity).
+# Minimal fallback prompts for the open-source release.
+# These provide basic commentary output without our proprietary billionaire-mentor style rules.
+DAILY_COMMENTARY_SYSTEM_PROMPT = """You are a financial commentary generator.
+Provide a clear, brief analysis of the market indicators, weekly schedules, and extracted facts."""
 
-You write in two distinct parts:
-1. TOPLINE SIGNALS: Cold, objective, terminal-style reporting of the 3 most critical KPIs.
-2. DAILY POINT: You do NOT simply list facts; you weave them into a compelling, practical narrative that guides the reader toward real financial independence. You write in highly professional, insightful, and polite narrative that guides the reader toward real financial independence."""
-
-# Daily Point Narrative Commentary User Prompt Template
 DAILY_COMMENTARY_USER_PROMPT_TEMPLATE = """
-Below is the data for today's market:
-
-<MARKET_INDICATORS>
-{market_indicators_text}
-</MARKET_INDICATORS>
-
-<WEEKLY_SCHEDULE>
-{weekly_schedule_text}
-</WEEKLY_SCHEDULE>
-
-<EXTRACTED_FACTS>
-{extracted_facts_text}
-</EXTRACTED_FACTS>
-
-Your task is to generate a two-part report: "Topline Signals" followed by the "Daily Point" narrative commentary.
-
----
-PART 1: Topline Signals
-Analyze the provided <EXTRACTED_FACTS>. Extract exactly the top 3 most critical, market-moving hard data points (KPIs).
-
-Constraints for Part 1:
-1. Zero Noise: Do NOT include adjectives, predictions, or subjective analysis.
-2. Hard Numbers Only: Each point MUST contain a specific metric (e.g., "$180B CapEx", "28% YoY growth", "3.5% Core CPI").
-3. Format: Start with "**Topline Signals**" followed by a line break. Use bullet points. Maximum one sentence per point. Start with the sector or company name in bold (e.g., "- **Apple**: ...").
-4. Language & Tone: Write strictly in professional English. Maintain the cold, objective, terminal-style reporting tone.
-
----
-PART 2: Daily Point (Narrative Synthesis)
-Synthesize all the data (<MARKET_INDICATORS>, <WEEKLY_SCHEDULE>, <EXTRACTED_FACTS>) into a narrative commentary.
-
-Constraints for Part 2:
-1. Language & Tone: Write strictly in polite, professional English. Maintain the calm, decisive, and deeply insightful tone of a billionaire mentor guiding a protégé. Focus on real-world wealth building, not academic analysis.
-2. Continuity & Synthesis: Seamlessly weave insights from today's <EXTRACTED_FACTS> and <MARKET_INDICATORS>. Demonstrate professional, long-term consistent logic.
-3. Exact Structure (Sandwich Method): 
-   - You MUST EXACTLY start your response with "Good day." followed by a line break.
-   - DO NOT output any markdown headers or bullet points. Write in smooth, continuous text paragraphs.
-   - The total length must be between 200 and 3000 characters.
-4. Content (The Synthesis - WEAVE THEM TOGETHER):
-   - Analyze the <MARKET_INDICATORS> to set the current market mood, but dismiss short-term noise.
-   - Reference key upcoming events from the <WEEKLY_SCHEDULE>.
-   - Connect these with the news from <EXTRACTED_FACTS> and bridge them to the 2026 mid-to-long-term Mega Trends.
-   - Provide a clear, practical perspective on how these trends impact long-term asset accumulation.
-5. Absolute Restrictions:
-   - DO NOT hallucinate facts.
-   - DO NOT output the raw lists of indices or schedules.
-   - Output ONLY your synthesized English commentary paragraph.
-
-Absolute Restriction: Output ONLY the Topline Signals and the Daily Point narrative. No conversational filler.
+Write a daily market commentary report based on:
+Market Indicators: {market_indicators_text}
+Weekly Schedule: {weekly_schedule_text}
+Extracted Facts: {extracted_facts_text}
 """
 
-# Premarket News Selection System Prompt
-PREMARKET_SELECTION_SYSTEM_PROMPT = """You are a self-made multi-billionaire investor and a ruthless Chief Investment Officer (CIO). You are preparing the ultimate 'Pre-market News Report' right before the US market opens.
+PREMARKET_SELECTION_SYSTEM_PROMPT = """You are a Chief Investment Officer selecting the most critical premarket news articles.
+Filter out noise and return the article IDs that are most likely to move sectors or the general market today."""
 
-Your objective is to review ALL provided news facts in <EXTRACTED_FACTS>, aggressively filter out noise, and select the absolute most critical news items that will move the entire market today or signal structural mega-trend shifts.
-
-You evaluate news strictly through a 3-Dimension Scoring System:
-1. Macro & Market Impact (1-5 pts): Does this affect entire sectors, the Fed, or global liquidity? (e.g., Tesla FSD China, Stellantis $70B shift > individual retail store earnings)
-2. Surprise Factor & Catalyst Urgency (1-5 pts): Is this unexpected news that will trigger immediate pre-market/open trading volume?
-3. Structural Trend Shift (1-5 pts): Does this change the long-term competitive landscape of an industry?
-
-You must score every item, rank them by total score, and output ONLY the absolute best items, strictly filtered and formatted without any conversational filler."""
-
-# Premarket News Selection User Prompt (Gemini ID-Selection Mode)
 PREMARKET_SELECTION_USER_PROMPT_GEMINI = """
-Below is ALL extracted news data from the past 24 hours. Each news item is assigned a unique numerical "ARTICLE ID" (e.g. 1, 2, 3...):
-
-<EXTRACTED_FACTS_WITH_IDS>
+Evaluate the following news articles and select the top IDs:
 {articles_text_for_prompt}
-</EXTRACTED_FACTS_WITH_IDS>
 
-Your task is to select the most critical news items for the "Pre-market News Report".
-
-Constraints:
-1. Two-Step Scoring and Selection Process:
-   - Step 1: Evaluate every single item in <EXTRACTED_FACTS_WITH_IDS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift) out of a maximum of 15 points. Do NOT print or output the scores.
-   - Step 2: Target and select items that score **12 points or higher** as your priority. Then, adhere to these strict quantity boundaries:
-     * Floor Limit: If fewer than 5 items score 12+ points, you MUST still select exactly 5 items in total by padding the list with the next highest-scoring items available.
-     * Ceiling Limit: If more than 12 items score 12+ points, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12 highest-scoring items.
-
-2. Strict Output Format (JSON only):
-   - You MUST output your final selection strictly as a JSON object containing a single key "selected_ids", mapping to an array of numerical IDs in ranked order (highest score first).
-   - Do NOT include any markdown formatting, triple backticks (e.g., ```json), conversational filler, comments, or extra keys. Just return the raw JSON object.
-   - Example response format:
-   {{"selected_ids": [3, 7, 12, 1, 5]}}
+Return a JSON object: {{"selected_ids": [1, 2, 3]}}
 """
 
-# Premarket News Selection User Prompt (Local Ollama Text-to-Text Fallback Mode)
 PREMARKET_SELECTION_USER_PROMPT_OLLAMA = """
-Below is ALL extracted news data from the past 24 hours:
-
-<EXTRACTED_FACTS>
+Select the top critical news from:
 {extracted_facts_text}
-</EXTRACTED_FACTS>
-
-Your task is to generate the "Pre-market News Report".
-
-Constraints:
-1. Two-Step Scoring and Selection Process:
-   - Step 1: Evaluate every single item in <EXTRACTED_FACTS> based on the 3-Dimension Scoring System (Macro Impact, Surprise Factor, Trend Shift) out of a maximum of 15 points. Do NOT print or output the scores.
-   - Step 2: Target and select items that score **12 points or higher** as your priority. Then, adhere to these strict quantity boundaries:
-     * Floor Limit: If fewer than 5 items score 12+ points, you MUST still select exactly 5 items in total by padding the list with the next highest-scoring items available.
-     * Ceiling Limit: If more than 12 items score 12+ points, you MUST cap the selection at exactly 12 items, choosing only the absolute top 12 highest-scoring items.
-
-2. No Duplicates & Zero Hallucinations: Do NOT select the same item twice. Do NOT add any external or generic links. ONLY use the original markdown links exactly as provided in the facts.
-
-3. Strict Ranking & Clean Formatting:
-   - Order the selected items by importance (highest score first).
-   - Format each item with the exact title markdown `[Title](URL)`, followed by a single line break, and then the exact body text.
-   - Do NOT include labels like "Rank 1", "Rank 2", "순위", "랭크", numbers, or bullet points before the title. Output ONLY the clean markdown links and bodies.
-   - Example format:
-     [Title](URL)
-     Body text here...
-
-     [Title](URL)
-     Body text here...
-
-4. Exact Match: Do NOT alter the URL or the body text of the selected items. Do NOT summarize them.
-5. Absolute Restriction: Output ONLY the ranked list of selected items formatted as above. Do NOT include any introduction, conversational filler, or summary sentences.
 """
+
+# Load the proprietary billionaire-mentor style prompts dynamically if they exist.
+# The 'config/' directory is gitignored to protect commercial intellectual property (IP).
+try:
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cio_config_path = os.path.join(
+        project_root, "config", "prompts", "cio_prompts.json"
+    )
+    if os.path.exists(cio_config_path):
+        with open(cio_config_path, "r", encoding="utf-8") as f:
+            custom_cio = json.load(f)
+            if custom_cio and isinstance(custom_cio, dict):
+                DAILY_COMMENTARY_SYSTEM_PROMPT = custom_cio.get(
+                    "DAILY_COMMENTARY_SYSTEM_PROMPT", DAILY_COMMENTARY_SYSTEM_PROMPT
+                )
+                DAILY_COMMENTARY_USER_PROMPT_TEMPLATE = custom_cio.get(
+                    "DAILY_COMMENTARY_USER_PROMPT_TEMPLATE",
+                    DAILY_COMMENTARY_USER_PROMPT_TEMPLATE,
+                )
+                PREMARKET_SELECTION_SYSTEM_PROMPT = custom_cio.get(
+                    "PREMARKET_SELECTION_SYSTEM_PROMPT",
+                    PREMARKET_SELECTION_SYSTEM_PROMPT,
+                )
+                PREMARKET_SELECTION_USER_PROMPT_GEMINI = custom_cio.get(
+                    "PREMARKET_SELECTION_USER_PROMPT_GEMINI",
+                    PREMARKET_SELECTION_USER_PROMPT_GEMINI,
+                )
+                PREMARKET_SELECTION_USER_PROMPT_OLLAMA = custom_cio.get(
+                    "PREMARKET_SELECTION_USER_PROMPT_OLLAMA",
+                    PREMARKET_SELECTION_USER_PROMPT_OLLAMA,
+                )
+except Exception:
+    # Fail silently to maintain engine robustness
+    pass
 
 # ==============================================================================
 # 2. Helper Functions
@@ -256,7 +190,11 @@ def format_weekly_schedule(data: dict, today_str: Optional[str] = None) -> str:
 
         utc_dt = parse_utc_time(utc_time_str)
 
-        # TIMEZONE MIDNIGHT BUG FIX
+        # TIMEZONE MIDNIGHT WORKAROUND:
+        # All-day macro events or market holidays are often scheduled at exactly UTC 00:00:00.
+        # Converting them to New York timezone (EST/EDT) shifts the timestamp back by 4-5 hours,
+        # which incorrectly places the event on the previous day. To prevent this date distortion,
+        # we bypass the timezone shift for midnight events and retain the raw UTC date directly.
         if utc_dt.hour == 0 and utc_dt.minute == 0 and utc_dt.second == 0:
             local_date = utc_dt.date()
         else:
@@ -298,9 +236,11 @@ def call_gemini_api(
     Calls the Gemini API (REST endpoint) using the provided system and user prompts.
     Tries early access gemini-3.5-flash first, then falls back gracefully to previous generations.
     """
-    api_key = os.environ.get(
-        "GEMINI_API_KEY", "AIzaSyBUVV6-n_nbHW84hg8blEegy8jtEYBPf4g"
-    )
+    # Fetch the Gemini API Key from environment variables.
+    # If the key is not defined, we raise a ValueError to prevent empty/failing API calls.
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable is not defined.")
 
     models_to_try = [
         "gemini-3.5-flash",
@@ -455,6 +395,10 @@ def select_premarket_news_gemini(facts_text: str) -> str:
     """
     Selects the top 5 to 12 most critical news items for the premarket briefing using Gemini 3.5 Flash.
     Parses facts into articles, assigns IDs, calls Gemini API in JSON Mode, and reconstructs the output in Python.
+
+    The model evaluates news based on a 3-Dimension Scoring System: Macro Impact, Surprise Factor, and Catalyst Urgency.
+    It targets articles scoring 12+ points, padding the selection to a minimum (floor) of 5 items if too few exist,
+    or capping it at a maximum (ceiling) of 12 items to maintain report density.
     """
     articles = parse_facts_into_articles(facts_text)
     if not articles:
