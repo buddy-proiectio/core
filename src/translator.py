@@ -37,9 +37,9 @@ if env_model:
     MODEL_CHAIN = [m.strip() for m in env_model.split(",") if m.strip()]
 else:
     MODEL_CHAIN = [
-        "gemma-4-31b",
-        "gemma-4-26b",
-        "gemma-3-27b",
+        "gemma-4-31b-it",
+        "gemma-4-26b-a4b-it",
+        "gemma-3-27b-it",
         "gemma-2-27b-it",
     ]
 
