@@ -204,7 +204,14 @@ def call_gemini_translator_api(
                         retry_needed = True
 
                     if (
-                        "thinkingConfig" in error_text or "thinkingBudget" in error_text
+                        any(
+                            term in error_text.lower()
+                            for term in [
+                                "thinkingconfig",
+                                "thinkingbudget",
+                                "thinking budget",
+                            ]
+                        )
                     ) and model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
                         logger.warning(
                             f"Model {model} returned 400 with thinkingConfig. Registering model as thinkingConfig-unsupported."
@@ -656,5 +663,5 @@ if __name__ == "__main__":
         default="full",
         help="Type of report to translate",
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     run_translator(report_type=args.type)
