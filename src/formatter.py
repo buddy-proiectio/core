@@ -317,6 +317,13 @@ def format_content(
         est_schedule = build_korean_weekly_schedule(weekly_schedule_data, date_str)
     content = replace_weekly_schedule(content, est_schedule)
 
+    # Collapse blank lines between a link and its body paragraph (only if the next non-empty line is a body paragraph)
+    content = re.sub(
+        r"(^|\n)(\[.*?\]\(https?://.*?\))\s*\n+(?=[^\[\s#\-*_])",
+        r"\1\2\n",
+        content,
+    )
+
     lines = content.split("\n")
     formatted_lines = []
     in_weekly_schedule = False

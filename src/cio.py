@@ -561,6 +561,14 @@ def run_full_cio(today_str: str, data_dir: str):
 
     # Merge content into final report format
     logger.info("Merging content into final report format...")
+
+    # Normalize: ensure exactly one newline (\n) between the [title](url) link and its body text
+    facts_text = re.sub(
+        r"(\[.*?\]\(https?://.*?\))\s*\n+(?=[^\[])",
+        r"\1\n",
+        facts_text,
+    )
+
     report = (
         f"## {today_str}\n\n"
         "### Daily Point\n"
@@ -613,6 +621,14 @@ def run_premarket_cio(today_str: str, data_dir: str):
 
     # Compile premarket report
     logger.info("Merging content into premarket report format...")
+
+    # Normalize: ensure exactly one newline (\n) between the [title](url) link and its body text
+    selected_news = re.sub(
+        r"(\[.*?\]\(https?://.*?\))\s*\n+(?=[^\[])",
+        r"\1\n",
+        selected_news,
+    )
+
     report = f"## {today_str} Premarket\n\n{selected_news}"
 
     with open(output_file, "w", encoding="utf-8") as f:
