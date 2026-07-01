@@ -39,8 +39,6 @@ else:
     MODEL_CHAIN = [
         "gemma-4-31b-it",
         "gemma-4-26b-a4b-it",
-        "gemma-3-27b-it",
-        "gemma-2-27b-it",
     ]
 
 # In-memory registry to track which models do not support native responseSchema
@@ -143,8 +141,8 @@ def build_payload(user_prompt: str, model: str) -> dict:
         }
 
     # Inject thinkingConfig with thinkingBudget=0 to disable thinking mode bottleneck
-    # only if the model is not registered as unsupported
-    if model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
+    # only for models that support/use thinking by default and are not registered as unsupported
+    if "thinking" in model.lower() and model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
         generation_config["thinkingConfig"] = {"thinkingBudget": 0}
 
     payload: Dict[str, Any] = {
@@ -186,7 +184,7 @@ def call_gemini_translator_api(
                 logger.info(
                     f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
                 )
-                resp = requests.post(url, json=payload, headers=headers, timeout=120)
+                resp = requests.post(url, json=payload, headers=headers, timeout=180)
 
                 # Check for bad request due to unsupported configurations
                 if resp.status_code == 400:
@@ -223,7 +221,7 @@ def call_gemini_translator_api(
                         # Rebuild payload and retry immediately
                         retry_payload = build_payload(user_prompt, model)
                         resp = requests.post(
-                            url, json=retry_payload, headers=headers, timeout=120
+                            url, json=retry_payload, headers=headers, timeout=180
                         )
 
                 # Check for Rate Limit (HTTP 429)
@@ -355,7 +353,8 @@ def translate_new_articles(
 
     logger.info(f"Translating {len(to_translate)} articles in batches...")
 
-    batch_size = 10
+    # Use environment variable for batch size, default to 2 to avoid timeouts on slower Gemma models
+    batch_size = int(os.environ.get("TRANSLATOR_BATCH_SIZE", "2"))
     batches = [
         to_translate[i : i + batch_size]
         for i in range(0, len(to_translate), batch_size)
@@ -445,7 +444,7 @@ def generate_korean_premarket_draft(
             ko_title = cache[url]["title"]
             ko_body = cache[url]["body"]
             if ko_body:
-                ko_blocks.append(f"[{ko_title}]({url})\n{ko_body}")
+                ko_blocks.append(f"[{ko_title}]({url})<br />{ko_body}")
             else:
                 ko_blocks.append(f"[{ko_title}]({url})")
         else:
@@ -517,7 +516,7 @@ def generate_korean_full_draft(
                     ko_title = cache[url]["title"]
                     ko_body = cache[url]["body"]
                     if ko_body:
-                        ko_blocks.append(f"[{ko_title}]({url})\n{ko_body}")
+                        ko_blocks.append(f"[{ko_title}]({url})<br />{ko_body}")
                     else:
                         ko_blocks.append(f"[{ko_title}]({url})")
                 else:
