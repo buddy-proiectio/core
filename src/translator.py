@@ -112,7 +112,213 @@ except Exception:
     pass
 
 
-def build_payload(user_prompt: str, model: str) -> dict:
+def clean_body_newlines(body: str) -> str:
+    """
+    Replaces newlines and HTML breaks inside the article body with periods
+    and joins them into a single continuous paragraph.
+    """
+    if not body:
+        return ""
+    # Replace '<br />', '<br>', '<br/>' with newlines first to normalize
+    body_clean = re.sub(r"<br\s*/?>", "\n", body)
+
+    # Split the body by newlines
+    lines = body_clean.split("\n")
+    cleaned_parts = []
+    for line in lines:
+        line_str = line.strip()
+        if not line_str:
+            continue
+
+        # If it doesn't end with a sentence ending punctuation, append a period
+        if not line_str.endswith((".", "!", "?", "。")):
+            line_str += "."
+
+        cleaned_parts.append(line_str)
+
+    # Join with a single space
+    result = " ".join(cleaned_parts)
+
+    # Clean up any consecutive periods like ".. " or "..." to a single period "."
+    # Also clean up consecutive spaces
+    result = re.sub(r"\.+", ".", result)
+    result = re.sub(r"\s+", " ", result).strip()
+    return result
+
+
+def load_translation_rules() -> dict:
+    """
+    Loads translation rules (dynamic guidance, literal replacements, regex replacements, pre-processing rules)
+    from shared/default_translation_rules.json and merges them with config/custom_translation_rules.json if present.
+    """
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_path = os.path.join(
+        project_root, "shared", "default_translation_rules.json"
+    )
+    custom_path = os.path.join(project_root, "config", "custom_translation_rules.json")
+
+    rules = {
+        "dynamic_guidance": [],
+        "literal_replacements": {},
+        "regex_replacements": [],
+        "pre_processing_rules": [],
+    }
+
+    # 1. Load defaults
+    if os.path.exists(default_path):
+        try:
+            with open(default_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "dynamic_guidance" in data and isinstance(
+                    data["dynamic_guidance"], list
+                ):
+                    rules["dynamic_guidance"].extend(data["dynamic_guidance"])
+                if "pre_processing_rules" in data and isinstance(
+                    data["pre_processing_rules"], list
+                ):
+                    rules["pre_processing_rules"].extend(data["pre_processing_rules"])
+                if "regex_replacements" in data and isinstance(
+                    data["regex_replacements"], list
+                ):
+                    rules["regex_replacements"].extend(data["regex_replacements"])
+                if "literal_replacements" in data and isinstance(
+                    data["literal_replacements"], dict
+                ):
+                    rules["literal_replacements"].update(data["literal_replacements"])
+        except Exception as e:
+            logger.error(f"Failed to load default translation rules: {e}")
+
+    # 2. Load custom/proprietary overrides and merge
+    if os.path.exists(custom_path):
+        try:
+            with open(custom_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "dynamic_guidance" in data and isinstance(
+                    data["dynamic_guidance"], list
+                ):
+                    rules["dynamic_guidance"].extend(data["dynamic_guidance"])
+                if "pre_processing_rules" in data and isinstance(
+                    data["pre_processing_rules"], list
+                ):
+                    rules["pre_processing_rules"].extend(data["pre_processing_rules"])
+                if "regex_replacements" in data and isinstance(
+                    data["regex_replacements"], list
+                ):
+                    rules["regex_replacements"].extend(data["regex_replacements"])
+                if "literal_replacements" in data and isinstance(
+                    data["literal_replacements"], dict
+                ):
+                    rules["literal_replacements"].update(data["literal_replacements"])
+        except Exception as e:
+            logger.error(f"Failed to load custom translation rules: {e}")
+
+    return rules
+
+
+def pre_process_articles(
+    articles: List[Dict[str, str]], rules: dict
+) -> List[Dict[str, str]]:
+    """
+    Applies pre-processing rules (e.g. normalizing bps, bp, %p) to English titles and bodies.
+    """
+    processed = []
+    pre_rules = rules.get("pre_processing_rules", [])
+
+    for art in articles:
+        title = art.get("title", "")
+        body = art.get("body", "")
+
+        # Apply configured pre-processing rules
+        for rule in pre_rules:
+            pattern = rule.get("pattern")
+            repl = rule.get("replacement")
+            if pattern and repl is not None:
+                title = re.sub(pattern, repl, title, flags=re.IGNORECASE)
+                body = re.sub(pattern, repl, body, flags=re.IGNORECASE)
+
+        processed.append({"url": art["url"], "title": title, "body": body})
+    return processed
+
+
+def post_process_translation(
+    ko_title: str, ko_body: str, rules: dict
+) -> tuple[str, str]:
+    """
+    Applies post-processing rules (newline cleaning, literal & regex replacements) to Korean titles and bodies.
+    """
+    # 1. Clean body newlines (Requirement 7)
+    ko_body = clean_body_newlines(ko_body)
+
+    # 2. Apply literal replacements
+    literal_repls = rules.get("literal_replacements", {})
+    for target, repl in literal_repls.items():
+        ko_title = ko_title.replace(target, repl)
+        ko_body = ko_body.replace(target, repl)
+
+    # 3. Apply regex replacements
+    regex_repls = rules.get("regex_replacements", [])
+    for r in regex_repls:
+        pattern = r.get("pattern")
+        repl = r.get("replacement")
+        if pattern and repl is not None:
+            ko_title = re.sub(pattern, repl, ko_title)
+            ko_body = re.sub(pattern, repl, ko_body)
+
+    return ko_title.strip(), ko_body.strip()
+
+
+def detect_dynamic_guidelines(articles: List[Dict[str, str]], rules: dict) -> str:
+    """
+    Scans a batch of articles to dynamically construct translation guidance
+    to prevent common LLM financial translation errors.
+    """
+    guidelines = []
+
+    # Concatenate all titles and bodies for scanning
+    combined_text = ""
+    for art in articles:
+        combined_text += f"\n{art.get('title', '')}\n{art.get('body', '')}"
+    combined_text_lower = combined_text.lower()
+
+    # Check configured guidelines
+    dynamic_rules = rules.get("dynamic_guidance", [])
+    for r in dynamic_rules:
+        keywords = r.get("keywords", [])
+        rule_text = r.get("rule", "")
+        if any(kw.lower() in combined_text_lower for kw in keywords):
+            guidelines.append(rule_text)
+
+    # Always check general economic context as fallback / backup
+    if any(
+        keyword in combined_text_lower
+        for keyword in [
+            "household",
+            "consumer",
+            "spending",
+            "inflation",
+            "gdp",
+            "fed",
+            "rate",
+            "economy",
+        ]
+    ):
+        guidelines.append(
+            "- General Economy/Consumer Context: For macroeconomic, retail, or general household data, "
+            "carefully analyze the sentence structure to understand who is spending, what they are spending on, and the overall context. "
+            "Avoid literal translations that result in nonsensical Korean sentences."
+        )
+
+    if guidelines:
+        guidelines_str = (
+            "\n[Dynamic Translation Guidance for this Batch]\n" + "\n".join(guidelines)
+        )
+        return guidelines_str
+    return ""
+
+
+def build_payload(
+    user_prompt: str, model: str, system_prompt: Optional[str] = None
+) -> dict:
     """Builds the API request payload dynamically based on model capabilities."""
     generation_config: Dict[str, Any] = {
         "temperature": 0.1,
@@ -140,14 +346,17 @@ def build_payload(user_prompt: str, model: str) -> dict:
             "required": ["translations"],
         }
 
-    # Inject thinkingConfig with thinkingBudget=0 to disable thinking mode bottleneck
-    # only for models that support/use thinking by default and are not registered as unsupported
-    if "thinking" in model.lower() and model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
+    # Inject thinkingConfig with thinkingBudget=0 to disable thinking mode bottleneck.
+    # If a model doesn't support thinkingConfig, the API call will return 400,
+    # which is handled by registering it to THINKING_CONFIG_UNSUPPORTED_MODELS and retrying.
+    if model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
         generation_config["thinkingConfig"] = {"thinkingBudget": 0}
 
     payload: Dict[str, Any] = {
         "contents": [{"parts": [{"text": user_prompt}]}],
-        "systemInstruction": {"parts": [{"text": TRANSLATION_SYSTEM_PROMPT}]},
+        "systemInstruction": {
+            "parts": [{"text": system_prompt or TRANSLATION_SYSTEM_PROMPT}]
+        },
         "generationConfig": generation_config,
     }
 
@@ -170,7 +379,22 @@ def call_gemini_translator_api(
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not defined.")
     headers = {"Content-Type": "application/json"}
-    user_prompt = json.dumps(articles, ensure_ascii=False)
+
+    # Load translation rules (default and custom)
+    rules = load_translation_rules()
+
+    # Pre-process the English articles
+    processed_articles = pre_process_articles(articles, rules)
+    user_prompt = json.dumps(processed_articles, ensure_ascii=False)
+
+    # Detect dynamic guidelines based on the pre-processed articles
+    dynamic_guidelines = detect_dynamic_guidelines(processed_articles, rules)
+    batch_system_prompt = TRANSLATION_SYSTEM_PROMPT
+    if dynamic_guidelines:
+        batch_system_prompt = TRANSLATION_SYSTEM_PROMPT + "\n" + dynamic_guidelines
+        logger.info(
+            f"Appended dynamic guidelines to translation system prompt:\n{dynamic_guidelines}"
+        )
 
     last_err = None
     for model in MODEL_CHAIN:
@@ -179,7 +403,7 @@ def call_gemini_translator_api(
         for attempt in range(retries_per_model):
             try:
                 # Build payload dynamically based on caches
-                payload = build_payload(user_prompt, model)
+                payload = build_payload(user_prompt, model, batch_system_prompt)
 
                 logger.info(
                     f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
@@ -219,7 +443,9 @@ def call_gemini_translator_api(
 
                     if retry_needed:
                         # Rebuild payload and retry immediately
-                        retry_payload = build_payload(user_prompt, model)
+                        retry_payload = build_payload(
+                            user_prompt, model, batch_system_prompt
+                        )
                         resp = requests.post(
                             url, json=retry_payload, headers=headers, timeout=180
                         )
@@ -267,9 +493,17 @@ def call_gemini_translator_api(
                 for item in translations_list:
                     url_key = item.get("url")
                     if url_key:
+                        raw_title = item.get("title", "").strip()
+                        raw_body = item.get("body", "").strip()
+
+                        # Apply post-processing (including line breaks removal)
+                        ko_title, ko_body = post_process_translation(
+                            raw_title, raw_body, rules
+                        )
+
                         mapped_results[url_key] = {
-                            "title": item.get("title", "").strip(),
-                            "body": item.get("body", "").strip(),
+                            "title": ko_title,
+                            "body": ko_body,
                         }
                 return mapped_results
 
@@ -325,6 +559,7 @@ def translate_new_articles(
     # Gather items to translate
     to_translate = []
     updated = False
+    seen_urls = set()
 
     for block in blocks:
         url, title, body = parse_article_block(block)
@@ -334,6 +569,9 @@ def translate_new_articles(
             continue
         if url in cache:
             continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
 
         # Rule for SEC filings (8-K, 10-K, 10-Q, SEC Filing): do not translate body, cache immediately
         if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", title, re.IGNORECASE):
@@ -353,8 +591,8 @@ def translate_new_articles(
 
     logger.info(f"Translating {len(to_translate)} articles in batches...")
 
-    # Use environment variable for batch size, default to 2 to avoid timeouts on slower Gemma models
-    batch_size = int(os.environ.get("TRANSLATOR_BATCH_SIZE", "2"))
+    # Use environment variable for batch size, default to 4 to optimize API calls
+    batch_size = int(os.environ.get("TRANSLATOR_BATCH_SIZE", "4"))
     batches = [
         to_translate[i : i + batch_size]
         for i in range(0, len(to_translate), batch_size)
@@ -406,6 +644,173 @@ def extract_urls_from_report(report_file: str) -> List[str]:
     return re.findall(r"\[.*?\]\((https?://.*?)\)", content)
 
 
+def extract_articles_from_report(report_file: str) -> List[Dict[str, str]]:
+    """Extract all articles (url, title, body) from a report file."""
+    if not os.path.exists(report_file):
+        return []
+    with open(report_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Split report by potential article blocks starting with [Title](Url)
+    blocks = re.split(r"(?=\[.*?\]\(https?://.*?\))", content)
+    articles = []
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        url, title, body = parse_article_block(block)
+        if url:
+            articles.append({"url": url, "title": title, "body": body})
+    return articles
+
+
+def translate_missing_report_articles(en_report_file: str, cache_file: str) -> None:
+    """
+    Check for any URLs in the English report that are missing from the cache,
+    and translate them before generating the final report.
+    """
+    if not os.path.exists(en_report_file):
+        logger.warning(
+            f"English report file {en_report_file} does not exist. Cannot check for missing translations."
+        )
+        return
+
+    # Load cache
+    cache: Dict[str, Dict[str, str]] = {}
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load cache in missing articles translation: {e}")
+
+    # Extract all articles from the report file
+    report_articles = extract_articles_from_report(en_report_file)
+
+    # Find which ones are missing from the cache
+    missing_articles = []
+    seen_urls = set()
+    for art in report_articles:
+        url = art["url"]
+        title = art["title"]
+        if url not in cache and url not in seen_urls:
+            seen_urls.add(url)
+            # Rule for SEC filings (8-K, 10-K, 10-Q, SEC Filing): do not translate body, cache immediately
+            if re.search(r"\b(8-K|10-K|10-Q|SEC Filing)\b", title, re.IGNORECASE):
+                logger.info(
+                    f"Skipping translation for SEC filing marker in missing check: {title[:50]}..."
+                )
+                cache[url] = {"title": title.strip(), "body": ""}
+                continue
+            missing_articles.append(art)
+
+    if not missing_articles:
+        logger.info("No missing translations detected in the report.")
+        return
+
+    logger.warning(
+        f"Detected {len(missing_articles)} missing translations in the report! Retrying translation..."
+    )
+
+    # Translate the missing articles in batches
+    batch_size = int(os.environ.get("TRANSLATOR_BATCH_SIZE", "4"))
+    batches = [
+        missing_articles[i : i + batch_size]
+        for i in range(0, len(missing_articles), batch_size)
+    ]
+
+    updated = False
+    for batch_idx, batch in enumerate(batches):
+        try:
+            # Enforce cooldown delay between calls
+            if batch_idx > 0:
+                logger.info("Sleeping 2 seconds to avoid rate limits during retry...")
+                time.sleep(2.0)
+
+            translations = call_gemini_translator_api(batch)
+            for article in batch:
+                url = article["url"]
+                if url in translations:
+                    cache[url] = translations[url]
+                    updated = True
+                else:
+                    logger.warning(f"Retry translation missing for url: {url}")
+        except Exception as e:
+            logger.error(
+                f"Error during retry translation of batch {batch_idx + 1}: {e}"
+            )
+
+    if updated:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+        logger.info(
+            f"Updated translation cache with retried missing articles. Total items: {len(cache)}"
+        )
+
+
+def sync_premarket_cache_to_delta(
+    cache_file: str, pre_state_file: str, en_report_file: str
+) -> None:
+    """
+    Filters translated_state_pre.json (cache_file) so that it only retains URLs
+    that are present in extracted_state_pre.json (pre_state_file) or the current premarket report.
+    This ensures that translated_state_pre.json only contains the delta for the current premarket session.
+    """
+    if not os.path.exists(cache_file):
+        return
+
+    # Load cache
+    try:
+        with open(cache_file, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load cache in sync_premarket_cache: {e}")
+        return
+
+    # Collect allowed URLs
+    allowed_urls = set()
+
+    # 1. From extracted_state_pre.json
+    if os.path.exists(pre_state_file):
+        try:
+            with open(pre_state_file, "r", encoding="utf-8") as f:
+                pre_state = json.load(f)
+            # Find all URLs in category_normal_outputs and category_sec_outputs
+            for cat, items in pre_state.get("category_normal_outputs", {}).items():
+                for item in items:
+                    url, _, _ = parse_article_block(item)
+                    if url:
+                        allowed_urls.add(url)
+            for cat, items in pre_state.get("category_sec_outputs", {}).items():
+                for item in items:
+                    url, _, _ = parse_article_block(item)
+                    if url:
+                        allowed_urls.add(url)
+            # Also check extracted_urls field if any
+            for url in pre_state.get("extracted_urls", []):
+                allowed_urls.add(url)
+        except Exception as e:
+            logger.error(f"Failed to load pre_state in sync_premarket_cache: {e}")
+
+    # 2. From premarket_report
+    if os.path.exists(en_report_file):
+        report_urls = extract_urls_from_report(en_report_file)
+        allowed_urls.update(report_urls)
+
+    # Filter cache
+    filtered_cache = {url: val for url, val in cache.items() if url in allowed_urls}
+
+    # Save cache back
+    try:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(filtered_cache, f, ensure_ascii=False, indent=2)
+        logger.info(
+            f"Synced {cache_file} to match premarket delta. Kept {len(filtered_cache)} of {len(cache)} items."
+        )
+    except Exception as e:
+        logger.error(f"Failed to save synced cache: {e}")
+
+
 def generate_korean_premarket_draft(
     en_report_file: str, ko_draft_file: str, cache_file: str
 ) -> bool:
@@ -448,7 +853,12 @@ def generate_korean_premarket_draft(
             else:
                 ko_blocks.append(f"[{ko_title}]({url})")
         else:
-            ko_blocks.append(block)
+            if url:
+                logger.warning(
+                    f"Excluding untranslated premarket article from draft: {url}"
+                )
+            else:
+                ko_blocks.append(block)
 
     ko_content = f"## {date_str} Premarket\n\n" + "\n\n".join(ko_blocks)
     with open(ko_draft_file, "w", encoding="utf-8") as f:
@@ -520,7 +930,12 @@ def generate_korean_full_draft(
                     else:
                         ko_blocks.append(f"[{ko_title}]({url})")
                 else:
-                    ko_blocks.append(block)
+                    if url:
+                        logger.warning(
+                            f"Excluding untranslated article from draft: {url}"
+                        )
+                    else:
+                        ko_blocks.append(block)
 
             ko_sec = f"{ko_header}\n\n" + "\n\n".join(ko_blocks)
             ko_sections.append(ko_sec)
@@ -611,6 +1026,9 @@ def run_translator(report_type: str = "full") -> None:
         # Translate only selected premarket articles first
         translate_new_articles(state_file, cache_file, limit_urls=premarket_urls)
 
+        # Check and translate any missing articles from the report before generating draft
+        translate_missing_report_articles(en_report, cache_file)
+
         # Generate KST premarket draft and format it immediately
         ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
         generate_korean_premarket_draft(en_report, ko_draft, cache_file)
@@ -630,6 +1048,10 @@ def run_translator(report_type: str = "full") -> None:
         logger.info("Proceeding to translate all remaining articles in state...")
         translate_new_articles(state_file, cache_file)
 
+        # Sync the premarket translation cache to the premarket delta
+        pre_state_file = os.path.join(data_dir, "extracted_state_pre.json")
+        sync_premarket_cache_to_delta(cache_file, pre_state_file, en_report)
+
     elif report_type == "full":
         # 1. Translate all articles to complete the cache
         translate_new_articles(state_file, cache_file)
@@ -640,6 +1062,9 @@ def run_translator(report_type: str = "full") -> None:
             files = sorted(glob.glob(os.path.join(data_dir, "final_report_*.txt")))
             if files:
                 en_report = files[-1]
+
+        # Check and translate any missing articles from the report before generating draft
+        translate_missing_report_articles(en_report, cache_file)
 
         ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
         generate_korean_full_draft(en_report, ko_draft, cache_file)

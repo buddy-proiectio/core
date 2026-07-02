@@ -1,0 +1,30 @@
+{
+  "dynamic_guidance": [],
+  "pre_processing_rules": [
+    {
+      "pattern": "\\b(\\d+)\\s*(?:basis points|basis point|bps|bp)\\b",
+      "replacement": "\\1 bp"
+    },
+    {
+      "pattern": "\\b(\\d+(\\.\\d+)?)\\s*(?:percentage points|percentage point|%p|pp)\\b",
+      "replacement": "\\1 %p"
+    }
+  ],
+  "literal_replacements": {
+    "미국 달러화화": "미국 달러화"
+  },
+  "regex_replacements": [
+    {
+      "pattern": "(?<!\\w)bps(?![\\w])",
+      "replacement": "bp"
+    },
+    {
+      "pattern": "(\\d+)\\s*(?:bp|bps)",
+      "replacement": "\\1bp"
+    },
+    {
+      "pattern": "(\\d+)\\s*%p",
+      "replacement": "\\1%p"
+    }
+  ]
+}
