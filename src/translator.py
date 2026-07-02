@@ -383,8 +383,18 @@ def call_gemini_translator_api(
     # Load translation rules (default and custom)
     rules = load_translation_rules()
 
-    # Pre-process the English articles
-    processed_articles = pre_process_articles(articles, rules)
+    # Map original URLs to short placeholders (id-0, id-1, etc.) to prevent LLM URL typos/mismatches
+    placeholder_to_original_url = {}
+    temp_articles = []
+    for idx, art in enumerate(articles):
+        placeholder = f"id-{idx}"
+        placeholder_to_original_url[placeholder] = art["url"]
+        temp_articles.append(
+            {"url": placeholder, "title": art["title"], "body": art["body"]}
+        )
+
+    # Pre-process the English articles with temporary placeholder URLs
+    processed_articles = pre_process_articles(temp_articles, rules)
     user_prompt = json.dumps(processed_articles, ensure_ascii=False)
 
     # Detect dynamic guidelines based on the pre-processed articles
@@ -490,9 +500,20 @@ def call_gemini_translator_api(
                 translations_list = result.get("translations", [])
 
                 mapped_results = {}
-                for item in translations_list:
+                for idx_in_list, item in enumerate(translations_list):
                     url_key = item.get("url")
+                    idx = None
                     if url_key:
+                        m = re.search(r"(\d+)", str(url_key))
+                        if m:
+                            idx = int(m.group(1))
+
+                    # Fallback to list order index if url_key index is not resolved
+                    if idx is None or not (0 <= idx < len(articles)):
+                        idx = idx_in_list
+
+                    if 0 <= idx < len(articles):
+                        original_url = articles[idx]["url"]
                         raw_title = item.get("title", "").strip()
                         raw_body = item.get("body", "").strip()
 
@@ -501,7 +522,7 @@ def call_gemini_translator_api(
                             raw_title, raw_body, rules
                         )
 
-                        mapped_results[url_key] = {
+                        mapped_results[original_url] = {
                             "title": ko_title,
                             "body": ko_body,
                         }
