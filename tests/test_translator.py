@@ -5,10 +5,17 @@ import json
 import tempfile
 import shutil
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-from translator import translate_new_articles, translate_missing_report_articles, TranslationError
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+)
+
+from translator import (
+    translate_new_articles,
+    translate_missing_report_articles,
+    TranslationError,
+)
 
 
 class TestTranslatorFailFast(unittest.TestCase):

@@ -104,7 +104,9 @@ class TestPipelineWeekendBypass(unittest.TestCase):
         # Verify pull_data_from_cloud WAS called because incremental bypasses the weekend skip
         mock_pull.assert_called_once_with("incremental", target_date="20260706")
         mock_sorter.assert_called_once_with("incremental", target_date="20260706")
-        mock_extractor.assert_called_once_with(report_type="incremental", target_date="20260706")
+        mock_extractor.assert_called_once_with(
+            report_type="incremental", target_date="20260706"
+        )
         mock_translator.assert_called_once_with("incremental", target_date="20260706")
 
 
@@ -113,7 +115,9 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
 
     @patch("src.subprocess.run")
     @patch("src.os.makedirs")
-    def test_pull_data_uses_target_date_for_incremental(self, mock_makedirs, mock_subprocess_run):
+    def test_pull_data_uses_target_date_for_incremental(
+        self, mock_makedirs, mock_subprocess_run
+    ):
         """When target_date is provided (weekend scenario), SCP should target that date's file."""
         from src import pull_data_from_cloud
 
@@ -132,6 +136,7 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
             # Write a valid JSON file so the function finds it after SCP
             with open(test_file, "w") as f:
                 import json
+
                 json.dump({"articles": [], "market_map": {}, "weekly_schedule": {}}, f)
 
             pull_data_from_cloud("incremental", target_date=target_date)
@@ -147,7 +152,9 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
 
     @patch("src.subprocess.run")
     @patch("src.os.makedirs")
-    def test_pull_data_uses_target_date_for_premarket(self, mock_makedirs, mock_subprocess_run):
+    def test_pull_data_uses_target_date_for_premarket(
+        self, mock_makedirs, mock_subprocess_run
+    ):
         """Premarket pulls should also use target_date for the file name."""
         from src import pull_data_from_cloud
 
@@ -163,6 +170,7 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
         try:
             with open(test_file, "w") as f:
                 import json
+
                 json.dump({"articles": [], "market_map": {}, "weekly_schedule": {}}, f)
 
             pull_data_from_cloud("premarket", target_date=target_date)
