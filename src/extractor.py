@@ -24,6 +24,7 @@ import torch
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
+from translator import call_gemini_translator_api, load_translation_rules
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -609,6 +610,27 @@ def run_extractor(
 
         try:
             url = "http://127.0.0.1:11434/api/chat"
+
+            # Determine cache file based on report_type
+            if report_type == "premarket":
+                cache_file = os.path.join(data_dir, "translated_state_pre.json")
+            else:
+                cache_file = os.path.join(
+                    data_dir, f"translated_state_{today_str}.json"
+                )
+
+            translation_rules = load_translation_rules()  # noqa: F841
+            translation_buffer = []
+
+            # Load existing cache to update in real-time
+            translation_cache = {}
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, "r", encoding="utf-8") as cf:
+                        translation_cache = json.load(cf)
+                except Exception as ce:
+                    logger.warning(f"Could not load existing translation cache: {ce}")
+
             total_tasks = len(active_tasks)
 
             # Setup TCP connection pool session
@@ -648,6 +670,22 @@ def run_extractor(
 
                         if not is_dup:
                             category_sec_outputs[category].append(final_text)
+                            # SEC filings do not require translation. Cache empty body directly
+                            if article_url != "#":
+                                translation_cache[article_url] = {
+                                    "title": clean_title,
+                                    "body": "",
+                                }
+                                try:
+                                    with open(cache_file, "w", encoding="utf-8") as cf:
+                                        json.dump(
+                                            translation_cache,
+                                            cf,
+                                            ensure_ascii=False,
+                                            indent=2,
+                                        )
+                                except Exception as ce:
+                                    logger.error(f"Failed to update SEC cache: {ce}")
                         continue
 
                     payload = {
@@ -822,8 +860,75 @@ def run_extractor(
                                     re.IGNORECASE,
                                 ):
                                     category_sec_outputs[category].append(final_text)
+                                    # SEC filings do not require translation. Cache empty body directly
+                                    if article_url != "#":
+                                        translation_cache[article_url] = {
+                                            "title": clean_title,
+                                            "body": "",
+                                        }
+                                        try:
+                                            with open(
+                                                cache_file, "w", encoding="utf-8"
+                                            ) as cf:
+                                                json.dump(
+                                                    translation_cache,
+                                                    cf,
+                                                    ensure_ascii=False,
+                                                    indent=2,
+                                                )
+                                        except Exception as ce:
+                                            logger.error(
+                                                f"Failed to update SEC cache: {ce}"
+                                            )
                                 else:
                                     category_normal_outputs[category].append(final_text)
+                                    # Buffer this article for translation
+                                    if article_url != "#":
+                                        translation_buffer.append(
+                                            {
+                                                "url": article_url,
+                                                "title": clean_title,
+                                                "body": output,
+                                            }
+                                        )
+
+                                        if len(translation_buffer) >= 4:
+                                            logger.info(
+                                                "Translation buffer full (size 4). Triggering real-time translation..."
+                                            )
+                                            try:
+                                                translations = (
+                                                    call_gemini_translator_api(
+                                                        list(translation_buffer)
+                                                    )
+                                                )
+                                                for tb_art in translation_buffer:
+                                                    t_url = tb_art["url"]
+                                                    if t_url in translations:
+                                                        translation_cache[t_url] = (
+                                                            translations[t_url]
+                                                        )
+                                                with open(
+                                                    cache_file, "w", encoding="utf-8"
+                                                ) as cf:
+                                                    json.dump(
+                                                        translation_cache,
+                                                        cf,
+                                                        ensure_ascii=False,
+                                                        indent=2,
+                                                    )
+                                                logger.info(
+                                                    "Real-time translation cache updated."
+                                                )
+                                            except Exception as te:
+                                                logger.error(
+                                                    f"Real-time translation batch failed: {te}"
+                                                )
+                                                raise RuntimeError(
+                                                    f"Real-time translation pipeline failed: {te}"
+                                                )
+                                            finally:
+                                                translation_buffer.clear()
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
@@ -834,7 +939,38 @@ def run_extractor(
                             )
 
                     except Exception as e:
+                        if (
+                            isinstance(e, RuntimeError)
+                            and "translation" in str(e).lower()
+                        ):
+                            raise
                         logger.error(f"Error process Task {idx:02d} [{category}]: {e}")
+
+                # Flush remaining articles in the translation buffer
+                if translation_buffer:
+                    logger.info(
+                        f"Flushing remaining {len(translation_buffer)} articles in translation buffer..."
+                    )
+                    try:
+                        translations = call_gemini_translator_api(
+                            list(translation_buffer)
+                        )
+                        for tb_art in translation_buffer:
+                            t_url = tb_art["url"]
+                            if t_url in translations:
+                                translation_cache[t_url] = translations[t_url]
+                        with open(cache_file, "w", encoding="utf-8") as cf:
+                            json.dump(
+                                translation_cache, cf, ensure_ascii=False, indent=2
+                            )
+                        logger.info("Final translation cache flush successful.")
+                    except Exception as te:
+                        logger.error(f"Final translation cache flush failed: {te}")
+                        raise RuntimeError(
+                            f"Final real-time translation flush failed: {te}"
+                        )
+                    finally:
+                        translation_buffer.clear()
 
         except KeyboardInterrupt:
             logger.info("Shutdown signal received. Process terminating.")
