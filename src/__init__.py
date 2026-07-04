@@ -249,7 +249,8 @@ def run_all(report_type: str = "full"):
 
         logger.info(f"Starting Buddy Core Pipeline (Type: {report_type})...")
 
-        if not is_us_trading_day():
+        # Bypass weekend execution skip only for incremental runs
+        if report_type != "incremental" and not is_us_trading_day():
             logger.info(
                 "US Market is closed (Weekend/Holiday). Skipping pipeline execution today."
             )
