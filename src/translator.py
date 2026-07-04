@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 import pytz
 import requests
 from formatter import run_formatter
+from translation_cleaner import TranslationCleaner
 from shared.env_utils import load_env_file
 from shared.shared_logger import setup_logger
 
@@ -40,14 +41,6 @@ else:
         "gemma-4-31b-it",
         "gemma-4-26b-a4b-it",
     ]
-
-# In-memory registry to track which models do not support native responseSchema
-# to avoid wasting API calls on subsequent batches.
-SCHEMA_UNSUPPORTED_MODELS = set()
-
-# In-memory registry to track which models do not support native thinkingConfig (thinkingBudget)
-# to avoid wasting API calls on subsequent batches.
-THINKING_CONFIG_UNSUPPORTED_MODELS = set()
 
 # Category translation mapping: Translates English section headers to their official Korean equivalent
 # used for publish-ready capital market reports in South Korea (e.g. "### General" -> "### 경제 일반").
@@ -264,6 +257,10 @@ def post_process_translation(
             ko_title = re.sub(pattern, repl, ko_title)
             ko_body = re.sub(pattern, repl, ko_body)
 
+    # 4. Apply modular TranslationCleaner filter
+    ko_title = TranslationCleaner.clean(ko_title)
+    ko_body = TranslationCleaner.clean(ko_body)
+
     return ko_title.strip(), ko_body.strip()
 
 
@@ -324,33 +321,6 @@ def build_payload(
         "temperature": 0.1,
         "responseMimeType": "application/json",
     }
-
-    # Inject responseSchema if model is not registered as schema-unsupported
-    if model not in SCHEMA_UNSUPPORTED_MODELS:
-        generation_config["responseSchema"] = {
-            "type": "OBJECT",
-            "properties": {
-                "translations": {
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "url": {"type": "STRING"},
-                            "title": {"type": "STRING"},
-                            "body": {"type": "STRING"},
-                        },
-                        "required": ["url", "title", "body"],
-                    },
-                }
-            },
-            "required": ["translations"],
-        }
-
-    # Inject thinkingConfig with thinkingBudget=0 to disable thinking mode bottleneck.
-    # If a model doesn't support thinkingConfig, the API call will return 400,
-    # which is handled by registering it to THINKING_CONFIG_UNSUPPORTED_MODELS and retrying.
-    if model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
-        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
 
     payload: Dict[str, Any] = {
         "contents": [{"parts": [{"text": user_prompt}]}],
@@ -418,47 +388,7 @@ def call_gemini_translator_api(
                 logger.info(
                     f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
                 )
-                resp = requests.post(url, json=payload, headers=headers, timeout=180)
-
-                # Check for bad request due to unsupported configurations
-                if resp.status_code == 400:
-                    error_text = resp.text
-                    retry_needed = False
-
-                    if (
-                        "responseSchema" in error_text
-                        and model not in SCHEMA_UNSUPPORTED_MODELS
-                    ):
-                        logger.warning(
-                            f"Model {model} returned 400 with responseSchema. Registering model as schema-unsupported."
-                        )
-                        SCHEMA_UNSUPPORTED_MODELS.add(model)
-                        retry_needed = True
-
-                    if (
-                        any(
-                            term in error_text.lower()
-                            for term in [
-                                "thinkingconfig",
-                                "thinkingbudget",
-                                "thinking budget",
-                            ]
-                        )
-                    ) and model not in THINKING_CONFIG_UNSUPPORTED_MODELS:
-                        logger.warning(
-                            f"Model {model} returned 400 with thinkingConfig. Registering model as thinkingConfig-unsupported."
-                        )
-                        THINKING_CONFIG_UNSUPPORTED_MODELS.add(model)
-                        retry_needed = True
-
-                    if retry_needed:
-                        # Rebuild payload and retry immediately
-                        retry_payload = build_payload(
-                            user_prompt, model, batch_system_prompt
-                        )
-                        resp = requests.post(
-                            url, json=retry_payload, headers=headers, timeout=180
-                        )
+                resp = requests.post(url, json=payload, headers=headers, timeout=90)
 
                 # Check for Rate Limit (HTTP 429)
                 if resp.status_code == 429:
