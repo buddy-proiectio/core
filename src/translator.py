@@ -579,6 +579,9 @@ def translate_new_articles(
 
         except Exception as e:
             logger.error(f"Error during translation of batch {batch_idx + 1}: {e}")
+            raise RuntimeError(
+                f"Translation pipeline failed during batch {batch_idx + 1}: {e}"
+            )
 
     if updated:
         with open(cache_file, "w", encoding="utf-8") as f:
@@ -689,6 +692,9 @@ def translate_missing_report_articles(en_report_file: str, cache_file: str) -> N
         except Exception as e:
             logger.error(
                 f"Error during retry translation of batch {batch_idx + 1}: {e}"
+            )
+            raise RuntimeError(
+                f"Retry translation failed during batch {batch_idx + 1}: {e}"
             )
 
     if updated:
