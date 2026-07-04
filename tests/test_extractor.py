@@ -11,8 +11,10 @@ import torch
 
 # Add src and project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-from src.extractor import run_extractor
+from extractor import run_extractor
+from translator import TranslationError
 
 
 class TestExtractorRealTimeTranslation(unittest.TestCase):
@@ -24,9 +26,9 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
-    @patch("src.extractor.SentenceTransformer")
-    @patch("src.extractor.verify_exact_match")
-    @patch("src.extractor.call_gemini_translator_api")
+    @patch("extractor.SentenceTransformer")
+    @patch("extractor.verify_exact_match")
+    @patch("extractor.call_gemini_translator_api")
     @patch("requests.Session.post")
     def test_run_extractor_real_time_translation_and_flush(
         self, mock_post, mock_translator_api, mock_verify, mock_sentence_transformer
@@ -165,9 +167,9 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         self.assertEqual(second_call_args[0]["url"], "https://art5.com")
         self.assertEqual(second_call_args[1]["url"], "https://art6.com")
 
-    @patch("src.extractor.SentenceTransformer")
-    @patch("src.extractor.verify_exact_match")
-    @patch("src.extractor.call_gemini_translator_api")
+    @patch("extractor.SentenceTransformer")
+    @patch("extractor.verify_exact_match")
+    @patch("extractor.call_gemini_translator_api")
     @patch("requests.Session.post")
     def test_run_extractor_real_time_translation_failure_raises_runtime_error(
         self, mock_post, mock_translator_api, mock_verify, mock_sentence_transformer
@@ -224,8 +226,8 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         with open(category_file, "w", encoding="utf-8") as f:
             json.dump(articles, f)
 
-        # 6. Verify that it raises RuntimeError when translation fails
-        with self.assertRaises(RuntimeError) as context:
+        # 6. Verify that it raises TranslationError when translation fails
+        with self.assertRaises(TranslationError) as context:
             run_extractor(data_dir=self.test_dir)
 
         self.assertIn("Real-time translation pipeline failed", str(context.exception))

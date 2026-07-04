@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import holidays
 from cio import run_cio
 from extractor import run_extractor
@@ -35,13 +35,16 @@ load_env_file()
 logger = setup_logger(logger_name=__name__)
 
 
-def is_us_trading_day() -> bool:
+def is_us_trading_day(dt: datetime | None = None) -> bool:
     """
-    Checks if the current date corresponds to a US trading day.
+    Checks if the given datetime corresponds to a US trading day.
     US trading days are Monday-Friday excluding NYSE holidays.
     """
     us_tz = pytz.timezone("America/New_York")
-    us_now = datetime.now(us_tz).date()
+    if dt is None:
+        us_now = datetime.now(us_tz).date()
+    else:
+        us_now = dt.astimezone(us_tz).date()
 
     if us_now.weekday() >= 5:
         return False
@@ -53,12 +56,26 @@ def is_us_trading_day() -> bool:
     return True
 
 
-def pull_data_from_cloud(report_type: str = "full"):
+def get_next_us_trading_day(dt: datetime) -> datetime:
+    """
+    Returns dt if it is a US trading day,
+    otherwise rolls forward 1 day at a time until a US trading day is found.
+    """
+    current = dt
+    while not is_us_trading_day(current):
+        current += timedelta(days=1)
+    return current
+
+
+def pull_data_from_cloud(report_type: str = "full", target_date: str | None = None):
     """
     Pulls sieve scraped news feed data from the Oracle Cloud instance.
     Utilizes secure SCP transfer to download raw JSON data daily.
     """
-    today = datetime.now(pytz.timezone("America/New_York")).strftime("%Y%m%d")
+    if target_date:
+        today = target_date
+    else:
+        today = datetime.now(pytz.timezone("America/New_York")).strftime("%Y%m%d")
 
     # Fetch Oracle instance credentials from environment variables to protect infrastructure configuration.
     # We resolve the local user home directory dynamically rather than hardcoding.
@@ -151,7 +168,8 @@ def run_all(report_type: str = "full"):
     # 1. New York Timezone Check
     us_tz = pytz.timezone("America/New_York")
     ny_now = datetime.now(us_tz)
-    today_str = datetime.now(us_tz).strftime("%Y%m%d")
+    target_dt = get_next_us_trading_day(ny_now)
+    today_str = target_dt.strftime("%Y%m%d")
 
     if report_type == "full":
         if ny_now.time() < datetime.strptime("06:00", "%H:%M").time():
@@ -258,27 +276,27 @@ def run_all(report_type: str = "full"):
 
         # Start processing pipeline
         logger.info(f"[1/5] Pulling Sieve data for {report_type}...")
-        pull_data_from_cloud(report_type)
+        pull_data_from_cloud(report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
         logger.info("[2/5] Running Sorter...")
-        run_sorter(report_type)
+        run_sorter(report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
         logger.info("[3/5] Running Extractor...")
-        run_extractor(report_type=report_type)
+        run_extractor(report_type=report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
         if report_type == "incremental":
             logger.info("Running Translator for Incremental...")
-            run_translator(report_type)
+            run_translator(report_type, target_date=today_str)
             logger.info(
                 "Incremental pipeline completed successfully up to Translator. Exiting."
             )
             return
 
         logger.info("[4/5] Running CIO...")
-        run_cio(report_type)
+        run_cio(report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
         logger.info("[5/5] Running Formatter...")
@@ -309,7 +327,7 @@ def run_all(report_type: str = "full"):
         if success:
             logger.info("Running Translator for Korean report...")
             try:
-                run_translator(report_type)
+                run_translator(report_type, target_date=today_str)
             except Exception as e:
                 logger.error(f"Translator failed: {e}")
 

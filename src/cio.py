@@ -637,10 +637,13 @@ def run_premarket_cio(today_str: str, data_dir: str):
     logger.info(f"Premarket report successfully generated and saved to {output_file}")
 
 
-def run_cio(report_type: str = "full"):
+def run_cio(report_type: str = "full", target_date: Optional[str] = None):
     try:
         us_tz = pytz.timezone("America/New_York")
-        today_str = datetime.now(us_tz).strftime("%Y%m%d")
+        if target_date:
+            today_str = target_date
+        else:
+            today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
         logger.info(f"Starting CIO Pipeline for {today_str} (Type: {report_type})")
 

@@ -4,8 +4,11 @@ import os
 import json
 import tempfile
 import shutil
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-from src.translator import translate_new_articles, translate_missing_report_articles
+from translator import translate_new_articles, translate_missing_report_articles, TranslationError
 
 
 class TestTranslatorFailFast(unittest.TestCase):
@@ -33,22 +36,22 @@ class TestTranslatorFailFast(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
-    @patch("src.translator.call_gemini_translator_api")
+    @patch("translator.call_gemini_translator_api")
     def test_translate_new_articles_raises_runtime_error(self, mock_api):
         mock_api.side_effect = Exception("API connection timeout")
 
-        with self.assertRaises(RuntimeError) as context:
+        with self.assertRaises(TranslationError) as context:
             translate_new_articles(self.state_file, self.cache_file)
 
         self.assertIn(
             "Translation pipeline failed during batch 1", str(context.exception)
         )
 
-    @patch("src.translator.call_gemini_translator_api")
+    @patch("translator.call_gemini_translator_api")
     def test_translate_missing_report_articles_raises_runtime_error(self, mock_api):
         mock_api.side_effect = Exception("Quota exceeded")
 
-        with self.assertRaises(RuntimeError) as context:
+        with self.assertRaises(TranslationError) as context:
             translate_missing_report_articles(self.report_file, self.cache_file)
 
         self.assertIn("Retry translation failed during batch 1", str(context.exception))

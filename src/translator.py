@@ -22,6 +22,13 @@ from translation_cleaner import TranslationCleaner
 from shared.env_utils import load_env_file
 from shared.shared_logger import setup_logger
 
+
+class TranslationError(Exception):
+    """Raised when translation API or translation logic fails."""
+
+    pass
+
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -347,7 +354,7 @@ def call_gemini_translator_api(
     # If the key is not defined, we raise a ValueError to prevent empty/failing API calls.
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY environment variable is not defined.")
+        raise TranslationError("GEMINI_API_KEY environment variable is not defined.")
     headers = {"Content-Type": "application/json"}
 
     # Load translation rules (default and custom)
@@ -471,9 +478,9 @@ def call_gemini_translator_api(
                     )
 
     if last_err:
-        raise last_err
+        raise TranslationError(f"Translation API call failed: {last_err}") from last_err
     else:
-        raise ValueError(
+        raise TranslationError(
             "Failed to translate batch: All fallback models in the chain failed."
         )
 
@@ -579,9 +586,9 @@ def translate_new_articles(
 
         except Exception as e:
             logger.error(f"Error during translation of batch {batch_idx + 1}: {e}")
-            raise RuntimeError(
+            raise TranslationError(
                 f"Translation pipeline failed during batch {batch_idx + 1}: {e}"
-            )
+            ) from e
 
     if updated:
         with open(cache_file, "w", encoding="utf-8") as f:
@@ -693,9 +700,9 @@ def translate_missing_report_articles(en_report_file: str, cache_file: str) -> N
             logger.error(
                 f"Error during retry translation of batch {batch_idx + 1}: {e}"
             )
-            raise RuntimeError(
+            raise TranslationError(
                 f"Retry translation failed during batch {batch_idx + 1}: {e}"
-            )
+            ) from e
 
     if updated:
         with open(cache_file, "w", encoding="utf-8") as f:
@@ -910,26 +917,31 @@ def generate_korean_full_draft(
     return True
 
 
-def run_translator(report_type: str = "full") -> None:
+def run_translator(
+    report_type: str = "full", target_date: Optional[str] = None
+) -> None:
     """
     Main entry point for translation pipeline.
     """
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(project_root, "data")
 
-    us_tz = pytz.timezone("America/New_York")
-    today_str = datetime.now(us_tz).strftime("%Y%m%d")
+    if target_date:
+        today_str = target_date
+    else:
+        us_tz = pytz.timezone("America/New_York")
+        today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
-    # Check if a custom json file is explicitly passed to capture testing
-    custom_date = None
-    for arg in sys.argv[1:]:
-        m = re.search(r"(\d{8})", arg)
-        if m:
-            custom_date = m.group(1)
-            break
+        # Check if a custom json file is explicitly passed to capture testing
+        custom_date = None
+        for arg in sys.argv[1:]:
+            m = re.search(r"(\d{8})", arg)
+            if m:
+                custom_date = m.group(1)
+                break
 
-    if custom_date:
-        today_str = custom_date
+        if custom_date:
+            today_str = custom_date
 
     state_file = os.path.join(data_dir, f"extracted_state_{today_str}.json")
 

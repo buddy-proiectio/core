@@ -24,7 +24,7 @@ import torch
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
-from translator import call_gemini_translator_api, load_translation_rules
+from translator import call_gemini_translator_api, TranslationError
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -314,6 +314,7 @@ def verify_exact_match(output: str, original_content: str) -> bool:
 def run_extractor(
     data_dir: typing.Optional[str] = None,
     report_type: typing.Optional[str] = None,
+    target_date: typing.Optional[str] = None,
 ) -> typing.Optional[bool]:
     """
     Executes the 'Dynamic Extraction' module for Phase 2.
@@ -333,8 +334,11 @@ def run_extractor(
         os.makedirs(data_dir, exist_ok=True)
 
     # 1. Get today's date in YYYYMMDD format (US Eastern Time)
-    us_tz = pytz.timezone("America/New_York")
-    today_str = datetime.now(us_tz).strftime("%Y%m%d")
+    if target_date:
+        today_str = target_date
+    else:
+        us_tz = pytz.timezone("America/New_York")
+        today_str = datetime.now(us_tz).strftime("%Y%m%d")
 
     # 2. Categories are directly driven by the configurations in prompts.py
     categories = list(AGENT_CONFIGS.keys())
@@ -619,7 +623,6 @@ def run_extractor(
                     data_dir, f"translated_state_{today_str}.json"
                 )
 
-            translation_rules = load_translation_rules()  # noqa: F841
             translation_buffer = []
 
             # Load existing cache to update in real-time
@@ -924,9 +927,9 @@ def run_extractor(
                                                 logger.error(
                                                     f"Real-time translation batch failed: {te}"
                                                 )
-                                                raise RuntimeError(
+                                                raise TranslationError(
                                                     f"Real-time translation pipeline failed: {te}"
-                                                )
+                                                ) from te
                                             finally:
                                                 translation_buffer.clear()
 
@@ -938,12 +941,10 @@ def run_extractor(
                                 f"Task {idx:02d} [{category}] Skipped (Empty output)"
                             )
 
+                    except TranslationError as te:
+                        logger.error(f"Real-time translation failed: {te}")
+                        raise te
                     except Exception as e:
-                        if (
-                            isinstance(e, RuntimeError)
-                            and "translation" in str(e).lower()
-                        ):
-                            raise
                         logger.error(f"Error process Task {idx:02d} [{category}]: {e}")
 
                 # Flush remaining articles in the translation buffer
@@ -966,9 +967,9 @@ def run_extractor(
                         logger.info("Final translation cache flush successful.")
                     except Exception as te:
                         logger.error(f"Final translation cache flush failed: {te}")
-                        raise RuntimeError(
+                        raise TranslationError(
                             f"Final real-time translation flush failed: {te}"
-                        )
+                        ) from te
                     finally:
                         translation_buffer.clear()
 
