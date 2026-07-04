@@ -25,7 +25,7 @@ import torch
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
-from translator import call_gemini_translator_api, TranslationError
+from translator import call_gemini_translator_api
 
 # Lock for thread-safe access to translation_cache and cache file writes
 _translation_lock = threading.Lock()
@@ -650,8 +650,12 @@ def run_extractor(
                             if t_url in translations:
                                 translation_cache[t_url] = translations[t_url]
                         with open(cache_file, "w", encoding="utf-8") as cf:
-                            json.dump(translation_cache, cf, ensure_ascii=False, indent=2)
-                    logger.info(f"Background translation ({batch_label}) cache updated.")
+                            json.dump(
+                                translation_cache, cf, ensure_ascii=False, indent=2
+                            )
+                    logger.info(
+                        f"Background translation ({batch_label}) cache updated."
+                    )
                 except Exception as te:
                     err_msg = f"Background translation ({batch_label}) failed: {te}"
                     logger.warning(err_msg)
@@ -926,7 +930,10 @@ def run_extractor(
                                             translation_buffer.clear()
                                             t = threading.Thread(
                                                 target=_translate_batch,
-                                                args=(batch_copy, f"batch-{len(translation_threads)+1}"),
+                                                args=(
+                                                    batch_copy,
+                                                    f"batch-{len(translation_threads) + 1}",
+                                                ),
                                                 daemon=True,
                                             )
                                             t.start()
