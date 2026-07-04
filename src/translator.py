@@ -47,6 +47,7 @@ else:
     MODEL_CHAIN = [
         "gemma-4-31b-it",
         "gemma-4-26b-a4b-it",
+        "gemini-2.0-flash-lite",
     ]
 
 # Category translation mapping: Translates English section headers to their official Korean equivalent
@@ -342,8 +343,8 @@ def build_payload(
 
 def call_gemini_translator_api(
     articles: List[Dict[str, str]],
-    retries_per_model: int = 2,
-    backoff_factor: int = 3,
+    retries_per_model: int = 3,
+    backoff_factor: int = 5,
 ) -> Dict[str, Dict[str, str]]:
     """
     Calls Google AI Studio's API to translate a batch of articles in JSON mode.
@@ -395,7 +396,7 @@ def call_gemini_translator_api(
                 logger.info(
                     f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
                 )
-                resp = requests.post(url, json=payload, headers=headers, timeout=90)
+                resp = requests.post(url, json=payload, headers=headers, timeout=180)
 
                 # Check for Rate Limit (HTTP 429)
                 if resp.status_code == 429:
@@ -412,6 +413,15 @@ def call_gemini_translator_api(
                         f"Model {model} returned HTTP {resp.status_code}. Skipping this model..."
                     )
                     break
+
+                # Server errors (500, 503): wait longer before retrying
+                if resp.status_code in (500, 503):
+                    sleep_time = backoff_factor * (attempt + 1) * 2
+                    logger.warning(
+                        f"Server error ({resp.status_code}) from model {model}. Sleeping {sleep_time}s before retry..."
+                    )
+                    time.sleep(sleep_time)
+                    continue
 
                 resp.raise_for_status()
                 res_data = resp.json()

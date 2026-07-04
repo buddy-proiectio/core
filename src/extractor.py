@@ -17,6 +17,7 @@ import uuid
 import warnings
 from datetime import datetime
 import typing
+import threading
 from sentence_transformers import SentenceTransformer
 import pytz
 import requests
@@ -25,6 +26,9 @@ from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_loggi
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
 from translator import call_gemini_translator_api, TranslationError
+
+# Lock for thread-safe access to translation_cache and cache file writes
+_translation_lock = threading.Lock()
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -623,16 +627,35 @@ def run_extractor(
                     data_dir, f"translated_state_{today_str}.json"
                 )
 
-            translation_buffer = []
+            translation_buffer: list[dict[str, str]] = []
+            translation_threads: list[threading.Thread] = []
+            translation_errors: list[str] = []
 
             # Load existing cache to update in real-time
-            translation_cache = {}
+            translation_cache: dict[str, dict[str, str]] = {}
             if os.path.exists(cache_file):
                 try:
                     with open(cache_file, "r", encoding="utf-8") as cf:
                         translation_cache = json.load(cf)
                 except Exception as ce:
                     logger.warning(f"Could not load existing translation cache: {ce}")
+
+            def _translate_batch(batch: list[dict[str, str]], batch_label: str) -> None:
+                """Run translation in a background thread. Updates cache in-place."""
+                try:
+                    translations = call_gemini_translator_api(batch)
+                    with _translation_lock:
+                        for art in batch:
+                            t_url = art["url"]
+                            if t_url in translations:
+                                translation_cache[t_url] = translations[t_url]
+                        with open(cache_file, "w", encoding="utf-8") as cf:
+                            json.dump(translation_cache, cf, ensure_ascii=False, indent=2)
+                    logger.info(f"Background translation ({batch_label}) cache updated.")
+                except Exception as te:
+                    err_msg = f"Background translation ({batch_label}) failed: {te}"
+                    logger.warning(err_msg)
+                    translation_errors.append(err_msg)
 
             total_tasks = len(active_tasks)
 
@@ -897,41 +920,17 @@ def run_extractor(
 
                                         if len(translation_buffer) >= 4:
                                             logger.info(
-                                                "Translation buffer full (size 4). Triggering real-time translation..."
+                                                "Translation buffer full (size 4). Dispatching background translation..."
                                             )
-                                            try:
-                                                translations = (
-                                                    call_gemini_translator_api(
-                                                        list(translation_buffer)
-                                                    )
-                                                )
-                                                for tb_art in translation_buffer:
-                                                    t_url = tb_art["url"]
-                                                    if t_url in translations:
-                                                        translation_cache[t_url] = (
-                                                            translations[t_url]
-                                                        )
-                                                with open(
-                                                    cache_file, "w", encoding="utf-8"
-                                                ) as cf:
-                                                    json.dump(
-                                                        translation_cache,
-                                                        cf,
-                                                        ensure_ascii=False,
-                                                        indent=2,
-                                                    )
-                                                logger.info(
-                                                    "Real-time translation cache updated."
-                                                )
-                                            except Exception as te:
-                                                logger.error(
-                                                    f"Real-time translation batch failed: {te}"
-                                                )
-                                                raise TranslationError(
-                                                    f"Real-time translation pipeline failed: {te}"
-                                                ) from te
-                                            finally:
-                                                translation_buffer.clear()
+                                            batch_copy = list(translation_buffer)
+                                            translation_buffer.clear()
+                                            t = threading.Thread(
+                                                target=_translate_batch,
+                                                args=(batch_copy, f"batch-{len(translation_threads)+1}"),
+                                                daemon=True,
+                                            )
+                                            t.start()
+                                            translation_threads.append(t)
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
@@ -941,9 +940,6 @@ def run_extractor(
                                 f"Task {idx:02d} [{category}] Skipped (Empty output)"
                             )
 
-                    except TranslationError as te:
-                        logger.error(f"Real-time translation failed: {te}")
-                        raise te
                     except Exception as e:
                         logger.error(f"Error process Task {idx:02d} [{category}]: {e}")
 
@@ -952,26 +948,30 @@ def run_extractor(
                     logger.info(
                         f"Flushing remaining {len(translation_buffer)} articles in translation buffer..."
                     )
-                    try:
-                        translations = call_gemini_translator_api(
-                            list(translation_buffer)
-                        )
-                        for tb_art in translation_buffer:
-                            t_url = tb_art["url"]
-                            if t_url in translations:
-                                translation_cache[t_url] = translations[t_url]
-                        with open(cache_file, "w", encoding="utf-8") as cf:
-                            json.dump(
-                                translation_cache, cf, ensure_ascii=False, indent=2
-                            )
-                        logger.info("Final translation cache flush successful.")
-                    except Exception as te:
-                        logger.error(f"Final translation cache flush failed: {te}")
-                        raise TranslationError(
-                            f"Final real-time translation flush failed: {te}"
-                        ) from te
-                    finally:
-                        translation_buffer.clear()
+                    batch_copy = list(translation_buffer)
+                    translation_buffer.clear()
+                    t = threading.Thread(
+                        target=_translate_batch,
+                        args=(batch_copy, "final-flush"),
+                        daemon=True,
+                    )
+                    t.start()
+                    translation_threads.append(t)
+
+                # Wait for all background translation threads to finish
+                if translation_threads:
+                    logger.info(
+                        f"Waiting for {len(translation_threads)} background translation thread(s) to finish..."
+                    )
+                    for t in translation_threads:
+                        t.join()
+                    logger.info("All background translations completed.")
+
+                if translation_errors:
+                    logger.warning(
+                        f"{len(translation_errors)} translation batch(es) failed during extraction. "
+                        f"These will be retried in the translator stage."
+                    )
 
         except KeyboardInterrupt:
             logger.info("Shutdown signal received. Process terminating.")

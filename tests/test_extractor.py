@@ -173,9 +173,11 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
     @patch("extractor.verify_exact_match")
     @patch("extractor.call_gemini_translator_api")
     @patch("requests.Session.post")
-    def test_run_extractor_real_time_translation_failure_raises_runtime_error(
+    def test_run_extractor_translation_failure_does_not_crash_extraction(
         self, mock_post, mock_translator_api, mock_verify, mock_sentence_transformer
     ):
+        """Translation failure during extraction should NOT crash the pipeline.
+        Extraction must complete, and untranslated articles will be retried later."""
         # 1. Mock SentenceTransformer
         mock_embedder = MagicMock()
         mock_sentence_transformer.return_value = mock_embedder
@@ -196,30 +198,16 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         mock_post.return_value = mock_response
 
         # 4. Mock Gemini translator API to fail
-        mock_translator_api.side_effect = Exception("Translation API down")
+        mock_translator_api.side_effect = TranslationError("Translation API down")
 
-        # 5. Create 4 normal articles
+        # 5. Create 6 normal articles (enough for buffer trigger + flush)
         articles = [
             {
-                "title": "Article 1",
-                "url": "https://art1.com",
-                "content": "Normal content 1",
-            },
-            {
-                "title": "Article 2",
-                "url": "https://art2.com",
-                "content": "Normal content 2",
-            },
-            {
-                "title": "Article 3",
-                "url": "https://art3.com",
-                "content": "Normal content 3",
-            },
-            {
-                "title": "Article 4",
-                "url": "https://art4.com",
-                "content": "Normal content 4",
-            },
+                "title": f"Article {i}",
+                "url": f"https://art{i}.com",
+                "content": f"Normal content {i}",
+            }
+            for i in range(1, 7)
         ]
 
         category_file = os.path.join(
@@ -228,11 +216,21 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         with open(category_file, "w", encoding="utf-8") as f:
             json.dump(articles, f)
 
-        # 6. Verify that it raises TranslationError when translation fails
-        with self.assertRaises(TranslationError) as context:
-            run_extractor(data_dir=self.test_dir)
+        # 6. Extraction should complete successfully despite translation failure
+        result = run_extractor(data_dir=self.test_dir)
+        self.assertTrue(result)
 
-        self.assertIn("Real-time translation pipeline failed", str(context.exception))
+        # 7. All 6 articles should have been extracted (extraction was not interrupted)
+        state_file = os.path.join(
+            self.test_dir, f"extracted_state_{self.today_str}.json"
+        )
+        self.assertTrue(os.path.exists(state_file))
+        with open(state_file, "r", encoding="utf-8") as sf:
+            state = json.load(sf)
+        self.assertEqual(len(state["extracted_urls"]), 6)
+
+        # 8. Translation API was called (buffer trigger at 4 + flush of 2)
+        self.assertEqual(mock_translator_api.call_count, 2)
 
 
 if __name__ == "__main__":
