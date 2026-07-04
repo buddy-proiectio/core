@@ -47,7 +47,6 @@ else:
     MODEL_CHAIN = [
         "gemma-4-31b-it",
         "gemma-4-26b-a4b-it",
-        "gemini-2.0-flash-lite",
     ]
 
 # Category translation mapping: Translates English section headers to their official Korean equivalent
