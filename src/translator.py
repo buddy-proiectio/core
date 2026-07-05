@@ -433,7 +433,13 @@ def call_gemini_translator_api(
                 if not parts:
                     raise ValueError(f"No parts found in candidate from model {model}")
 
-                content_text = parts[0].get("text", "").strip()
+                content_text = ""
+                for part in parts:
+                    if not part.get("thought"):
+                        content_text = part.get("text", "").strip()
+                        break
+                if not content_text and parts:
+                    content_text = parts[0].get("text", "").strip()
 
                 if content_text.startswith("```"):
                     content_text = re.sub(

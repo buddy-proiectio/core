@@ -643,8 +643,9 @@ def run_extractor(
             def _translate_batch(batch: list[dict[str, str]], batch_label: str) -> None:
                 """Run translation in a background thread. Updates cache in-place."""
                 try:
-                    translations = call_gemini_translator_api(batch)
+                    # Enforce sequential execution of API calls to prevent concurrency-related timeouts/rate-limits
                     with _translation_lock:
+                        translations = call_gemini_translator_api(batch)
                         for art in batch:
                             t_url = art["url"]
                             if t_url in translations:

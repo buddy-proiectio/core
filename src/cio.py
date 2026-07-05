@@ -282,7 +282,13 @@ def call_gemini_api(
             if not parts:
                 raise ValueError("No parts found in the first candidate")
 
-            content_text = parts[0].get("text", "").strip()
+            content_text = ""
+            for part in parts:
+                if not part.get("thought"):
+                    content_text = part.get("text", "").strip()
+                    break
+            if not content_text and parts:
+                content_text = parts[0].get("text", "").strip()
             return content_text
         except Exception as e:
             logger.error(f"Error calling Gemini API with model {model}: {e}")
