@@ -57,3 +57,6 @@ Thumbs.db
 .classpath
 .cproject
 .settings/
+
+# Superpowers specs
+docs/superpowers/
