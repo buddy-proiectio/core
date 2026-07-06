@@ -348,7 +348,7 @@ def call_gemini_translator_api(
     retries_per_model: int = 3,
     backoff_factor: int = 5,
     *args,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Dict[str, str]]:
     """
     Calls Google AI Studio's API to translate a batch of articles in JSON mode.
@@ -499,9 +499,10 @@ def call_gemini_translator_api(
 
     if last_err:
         # Check if the error is a timeout or JSON parsing error, and we have multiple articles to split
-        is_timeout_or_json_error = isinstance(
-            last_err, (requests.exceptions.Timeout, json.JSONDecodeError)
-        ) or "read timeout" in str(last_err).lower()
+        is_timeout_or_json_error = (
+            isinstance(last_err, (requests.exceptions.Timeout, json.JSONDecodeError))
+            or "read timeout" in str(last_err).lower()
+        )
 
         if is_timeout_or_json_error and len(articles) > 1:
             mid = len(articles) // 2
@@ -518,7 +519,9 @@ def call_gemini_translator_api(
             )
 
             # Cooldown sleep to respect rate limits
-            logger.info(f"Sleeping {COOLDOWN_SLEEP_SECONDS} seconds between split batch runs...")
+            logger.info(
+                f"Sleeping {COOLDOWN_SLEEP_SECONDS} seconds between split batch runs..."
+            )
             time.sleep(COOLDOWN_SLEEP_SECONDS)
 
             # Recursive call for right half
@@ -526,11 +529,8 @@ def call_gemini_translator_api(
                 right_batch, retries_per_model, backoff_factor, *args, **kwargs
             )
 
-            # Merge results
-            merged_results = {}
-            merged_results.update(left_results)
-            merged_results.update(right_results)
-            return merged_results
+            # Merge and return results
+            return {**left_results, **right_results}
 
         raise TranslationError(f"Translation API call failed: {last_err}") from last_err
     else:
