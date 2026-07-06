@@ -493,6 +493,40 @@ def call_gemini_translator_api(
                     )
 
     if last_err:
+        # Check if the error is a timeout or JSON parsing error, and we have multiple articles to split
+        is_timeout_or_json_error = isinstance(
+            last_err, (requests.exceptions.Timeout, json.JSONDecodeError)
+        ) or "read timeout" in str(last_err).lower()
+
+        if is_timeout_or_json_error and len(articles) > 1:
+            mid = len(articles) // 2
+            left_batch = articles[:mid]
+            right_batch = articles[mid:]
+            logger.warning(
+                f"Translation failed due to timeout or JSON error ({last_err}). "
+                f"Splitting batch of size {len(articles)} into {len(left_batch)} and {len(right_batch)}..."
+            )
+
+            # Recursive call for left half
+            left_results = call_gemini_translator_api(
+                left_batch, retries_per_model, backoff_factor
+            )
+
+            # Cooldown sleep to respect rate limits
+            logger.info("Sleeping 2.0 seconds between split batch runs...")
+            time.sleep(2.0)
+
+            # Recursive call for right half
+            right_results = call_gemini_translator_api(
+                right_batch, retries_per_model, backoff_factor
+            )
+
+            # Merge results
+            merged_results = {}
+            merged_results.update(left_results)
+            merged_results.update(right_results)
+            return merged_results
+
         raise TranslationError(f"Translation API call failed: {last_err}") from last_err
     else:
         raise TranslationError(

@@ -64,5 +64,130 @@ class TestTranslatorFailFast(unittest.TestCase):
         self.assertIn("Retry translation failed during batch 1", str(context.exception))
 
 
+class TestTranslatorSplitAndRetry(unittest.TestCase):
+    @patch("translator.requests.post")
+    @patch("translator.time.sleep")
+    def test_split_and_retry_on_timeout(self, mock_sleep, mock_post):
+        import requests
+        articles = [
+            {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"},
+            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"}
+        ]
+
+        def side_effect(url, **kwargs):
+            json_payload = kwargs.get("json")
+            payload_text = json_payload["contents"][0]["parts"][0]["text"]
+            payload_data = json.loads(payload_text)
+
+            if len(payload_data) == 2:
+                raise requests.exceptions.Timeout("Read timeout")
+            elif len(payload_data) == 1:
+                art = payload_data[0]
+                url_placeholder = art["url"]
+                resp = unittest.mock.MagicMock()
+                resp.status_code = 200
+
+                translated_art = {
+                    "url": url_placeholder,
+                    "title": f"Translated {art['title']}",
+                    "body": f"Translated {art['body']}"
+                }
+                resp.json.return_value = {
+                    "candidates": [{
+                        "content": {
+                            "parts": [{
+                                "text": json.dumps({"translations": [translated_art]})
+                            }]
+                        }
+                    }]
+                }
+                return resp
+            else:
+                raise ValueError("Unexpected batch size in mock")
+
+        mock_post.side_effect = side_effect
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
+            from translator import call_gemini_translator_api
+            results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
+        self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
+
+        # Verify cooldown sleep (2.0s) was called between batch runs
+        mock_sleep.assert_any_call(2.0)
+
+    @patch("translator.requests.post")
+    @patch("translator.time.sleep")
+    def test_split_and_retry_on_json_error(self, mock_sleep, mock_post):
+        articles = [
+            {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"},
+            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"}
+        ]
+
+        def side_effect(url, **kwargs):
+            json_payload = kwargs.get("json")
+            payload_text = json_payload["contents"][0]["parts"][0]["text"]
+            payload_data = json.loads(payload_text)
+
+            resp = unittest.mock.MagicMock()
+            resp.status_code = 200
+
+            if len(payload_data) == 2:
+                resp.json.return_value = {
+                    "candidates": [{
+                        "content": {
+                            "parts": [{
+                                "text": "invalid_json{"
+                            }]
+                        }
+                    }]
+                }
+            elif len(payload_data) == 1:
+                art = payload_data[0]
+                url_placeholder = art["url"]
+                translated_art = {
+                    "url": url_placeholder,
+                    "title": f"Translated {art['title']}",
+                    "body": f"Translated {art['body']}"
+                }
+                resp.json.return_value = {
+                    "candidates": [{
+                        "content": {
+                            "parts": [{
+                                "text": json.dumps({"translations": [translated_art]})
+                            }]
+                        }
+                    }]
+                }
+            return resp
+
+        mock_post.side_effect = side_effect
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
+            from translator import call_gemini_translator_api
+            results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
+        self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
+
+    @patch("translator.requests.post")
+    @patch("translator.time.sleep")
+    def test_no_split_on_single_article(self, mock_sleep, mock_post):
+        import requests
+        articles = [
+            {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"}
+        ]
+
+        mock_post.side_effect = requests.exceptions.Timeout("Read timeout")
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
+            from translator import call_gemini_translator_api
+            with self.assertRaises(TranslationError):
+                call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+
+
 if __name__ == "__main__":
     unittest.main()
