@@ -5,6 +5,7 @@ import json
 import tempfile
 import shutil
 import sys
+import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(
@@ -68,14 +69,14 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
     @patch("translator.requests.post")
     @patch("translator.time.sleep")
     def test_split_and_retry_on_timeout(self, mock_sleep, mock_post):
-        import requests
         articles = [
             {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"},
-            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"}
+            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"},
         ]
 
         def side_effect(url, **kwargs):
             json_payload = kwargs.get("json")
+            assert json_payload is not None
             payload_text = json_payload["contents"][0]["parts"][0]["text"]
             payload_data = json.loads(payload_text)
 
@@ -90,16 +91,22 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
                 translated_art = {
                     "url": url_placeholder,
                     "title": f"Translated {art['title']}",
-                    "body": f"Translated {art['body']}"
+                    "body": f"Translated {art['body']}",
                 }
                 resp.json.return_value = {
-                    "candidates": [{
-                        "content": {
-                            "parts": [{
-                                "text": json.dumps({"translations": [translated_art]})
-                            }]
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json.dumps(
+                                            {"translations": [translated_art]}
+                                        )
+                                    }
+                                ]
+                            }
                         }
-                    }]
+                    ]
                 }
                 return resp
             else:
@@ -109,11 +116,18 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
             from translator import call_gemini_translator_api, COOLDOWN_SLEEP_SECONDS
-            results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+
+            results = call_gemini_translator_api(
+                articles, retries_per_model=1, backoff_factor=1
+            )
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
-        self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
+        self.assertEqual(
+            results["https://apple.com"]["title"], "Translated Apple Title"
+        )
+        self.assertEqual(
+            results["https://tesla.com"]["title"], "Translated Tesla Title"
+        )
 
         # Verify cooldown sleep was called between batch runs
         mock_sleep.assert_any_call(COOLDOWN_SLEEP_SECONDS)
@@ -123,11 +137,12 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
     def test_split_and_retry_on_json_error(self, mock_sleep, mock_post):
         articles = [
             {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"},
-            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"}
+            {"url": "https://tesla.com", "title": "Tesla Title", "body": "Tesla Body"},
         ]
 
         def side_effect(url, **kwargs):
             json_payload = kwargs.get("json")
+            assert json_payload is not None
             payload_text = json_payload["contents"][0]["parts"][0]["text"]
             payload_data = json.loads(payload_text)
 
@@ -136,13 +151,7 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
 
             if len(payload_data) == 2:
                 resp.json.return_value = {
-                    "candidates": [{
-                        "content": {
-                            "parts": [{
-                                "text": "invalid_json{"
-                            }]
-                        }
-                    }]
+                    "candidates": [{"content": {"parts": [{"text": "invalid_json{"}]}}]
                 }
             elif len(payload_data) == 1:
                 art = payload_data[0]
@@ -150,16 +159,22 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
                 translated_art = {
                     "url": url_placeholder,
                     "title": f"Translated {art['title']}",
-                    "body": f"Translated {art['body']}"
+                    "body": f"Translated {art['body']}",
                 }
                 resp.json.return_value = {
-                    "candidates": [{
-                        "content": {
-                            "parts": [{
-                                "text": json.dumps({"translations": [translated_art]})
-                            }]
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json.dumps(
+                                            {"translations": [translated_art]}
+                                        )
+                                    }
+                                ]
+                            }
                         }
-                    }]
+                    ]
                 }
             return resp
 
@@ -167,11 +182,18 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
             from translator import call_gemini_translator_api, COOLDOWN_SLEEP_SECONDS
-            results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+
+            results = call_gemini_translator_api(
+                articles, retries_per_model=1, backoff_factor=1
+            )
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
-        self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
+        self.assertEqual(
+            results["https://apple.com"]["title"], "Translated Apple Title"
+        )
+        self.assertEqual(
+            results["https://tesla.com"]["title"], "Translated Tesla Title"
+        )
 
         # Verify cooldown sleep was called between batch runs
         mock_sleep.assert_any_call(COOLDOWN_SLEEP_SECONDS)
@@ -179,7 +201,6 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
     @patch("translator.requests.post")
     @patch("translator.time.sleep")
     def test_no_split_on_single_article(self, mock_sleep, mock_post):
-        import requests
         articles = [
             {"url": "https://apple.com", "title": "Apple Title", "body": "Apple Body"}
         ]
@@ -188,8 +209,11 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
             from translator import call_gemini_translator_api
+
             with self.assertRaises(TranslationError):
-                call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
+                call_gemini_translator_api(
+                    articles, retries_per_model=1, backoff_factor=1
+                )
 
 
 if __name__ == "__main__":
