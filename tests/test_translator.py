@@ -108,15 +108,15 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
         mock_post.side_effect = side_effect
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            from translator import call_gemini_translator_api
+            from translator import call_gemini_translator_api, COOLDOWN_SLEEP_SECONDS
             results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
 
         self.assertEqual(len(results), 2)
         self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
         self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
 
-        # Verify cooldown sleep (2.0s) was called between batch runs
-        mock_sleep.assert_any_call(2.0)
+        # Verify cooldown sleep was called between batch runs
+        mock_sleep.assert_any_call(COOLDOWN_SLEEP_SECONDS)
 
     @patch("translator.requests.post")
     @patch("translator.time.sleep")
@@ -166,12 +166,15 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
         mock_post.side_effect = side_effect
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}):
-            from translator import call_gemini_translator_api
+            from translator import call_gemini_translator_api, COOLDOWN_SLEEP_SECONDS
             results = call_gemini_translator_api(articles, retries_per_model=1, backoff_factor=1)
 
         self.assertEqual(len(results), 2)
         self.assertEqual(results["https://apple.com"]["title"], "Translated Apple Title")
         self.assertEqual(results["https://tesla.com"]["title"], "Translated Tesla Title")
+
+        # Verify cooldown sleep was called between batch runs
+        mock_sleep.assert_any_call(COOLDOWN_SLEEP_SECONDS)
 
     @patch("translator.requests.post")
     @patch("translator.time.sleep")

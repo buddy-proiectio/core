@@ -49,6 +49,9 @@ else:
         "gemma-4-26b-a4b-it",
     ]
 
+# Cooldown sleep between split batch runs to respect rate limits
+COOLDOWN_SLEEP_SECONDS = 2.0
+
 # Category translation mapping: Translates English section headers to their official Korean equivalent
 # used for publish-ready capital market reports in South Korea (e.g. "### General" -> "### 경제 일반").
 CATEGORY_MAPPING = {
@@ -344,6 +347,8 @@ def call_gemini_translator_api(
     articles: List[Dict[str, str]],
     retries_per_model: int = 3,
     backoff_factor: int = 5,
+    *args,
+    **kwargs
 ) -> Dict[str, Dict[str, str]]:
     """
     Calls Google AI Studio's API to translate a batch of articles in JSON mode.
@@ -509,16 +514,16 @@ def call_gemini_translator_api(
 
             # Recursive call for left half
             left_results = call_gemini_translator_api(
-                left_batch, retries_per_model, backoff_factor
+                left_batch, retries_per_model, backoff_factor, *args, **kwargs
             )
 
             # Cooldown sleep to respect rate limits
-            logger.info("Sleeping 2.0 seconds between split batch runs...")
-            time.sleep(2.0)
+            logger.info(f"Sleeping {COOLDOWN_SLEEP_SECONDS} seconds between split batch runs...")
+            time.sleep(COOLDOWN_SLEEP_SECONDS)
 
             # Recursive call for right half
             right_results = call_gemini_translator_api(
-                right_batch, retries_per_model, backoff_factor
+                right_batch, retries_per_model, backoff_factor, *args, **kwargs
             )
 
             # Merge results
