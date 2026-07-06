@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import os
 import json
 import tempfile
@@ -85,7 +85,7 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
             elif len(payload_data) == 1:
                 art = payload_data[0]
                 url_placeholder = art["url"]
-                resp = unittest.mock.MagicMock()
+                resp = MagicMock()
                 resp.status_code = 200
 
                 translated_art = {
@@ -146,7 +146,7 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
             payload_text = json_payload["contents"][0]["parts"][0]["text"]
             payload_data = json.loads(payload_text)
 
-            resp = unittest.mock.MagicMock()
+            resp = MagicMock()
             resp.status_code = 200
 
             if len(payload_data) == 2:
