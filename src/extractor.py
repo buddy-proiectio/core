@@ -17,7 +17,6 @@ import uuid
 import warnings
 from datetime import datetime
 import typing
-import threading
 from sentence_transformers import SentenceTransformer
 import pytz
 import requests
@@ -25,10 +24,8 @@ import torch
 from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
-from translator import call_gemini_translator_api
 
-# Lock for thread-safe access to translation_cache and cache file writes
-_translation_lock = threading.Lock()
+
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -619,50 +616,9 @@ def run_extractor(
         try:
             url = "http://127.0.0.1:11434/api/chat"
 
-            # Determine cache file based on report_type
-            if report_type == "premarket":
-                cache_file = os.path.join(data_dir, "translated_state_pre.json")
-            else:
-                cache_file = os.path.join(
-                    data_dir, f"translated_state_{today_str}.json"
-                )
-
-            translation_buffer: list[dict[str, str]] = []
-            translation_threads: list[threading.Thread] = []
-            translation_errors: list[str] = []
-
-            # Load existing cache to update in real-time
-            translation_cache: dict[str, dict[str, str]] = {}
-            if os.path.exists(cache_file):
-                try:
-                    with open(cache_file, "r", encoding="utf-8") as cf:
-                        translation_cache = json.load(cf)
-                except Exception as ce:
-                    logger.warning(f"Could not load existing translation cache: {ce}")
-
-            def _translate_batch(batch: list[dict[str, str]], batch_label: str) -> None:
-                """Run translation in a background thread. Updates cache in-place."""
-                try:
-                    # Enforce sequential execution of API calls to prevent concurrency-related timeouts/rate-limits
-                    with _translation_lock:
-                        translations = call_gemini_translator_api(batch)
-                        for art in batch:
-                            t_url = art["url"]
-                            if t_url in translations:
-                                translation_cache[t_url] = translations[t_url]
-                        with open(cache_file, "w", encoding="utf-8") as cf:
-                            json.dump(
-                                translation_cache, cf, ensure_ascii=False, indent=2
-                            )
-                    logger.info(
-                        f"Background translation ({batch_label}) cache updated."
-                    )
-                except Exception as te:
-                    err_msg = f"Background translation ({batch_label}) failed: {te}"
-                    logger.warning(err_msg)
-                    translation_errors.append(err_msg)
-
             total_tasks = len(active_tasks)
+
+            consecutive_ollama_failures = 0
 
             # Setup TCP connection pool session
             with requests.Session() as session:
@@ -701,22 +657,15 @@ def run_extractor(
 
                         if not is_dup:
                             category_sec_outputs[category].append(final_text)
-                            # SEC filings do not require translation. Cache empty body directly
-                            if article_url != "#":
-                                translation_cache[article_url] = {
-                                    "title": clean_title,
-                                    "body": "",
-                                }
-                                try:
-                                    with open(cache_file, "w", encoding="utf-8") as cf:
-                                        json.dump(
-                                            translation_cache,
-                                            cf,
-                                            ensure_ascii=False,
-                                            indent=2,
-                                        )
-                                except Exception as ce:
-                                    logger.error(f"Failed to update SEC cache: {ce}")
+                            # Mark as extracted
+                            extracted_urls_set.add(article_url)
+                            extracted_urls.append(article_url)
+                            # Save state incrementally
+                            try:
+                                with open(state_filename, "w", encoding="utf-8") as sf:
+                                    json.dump(state_data, sf, ensure_ascii=False, indent=2)
+                            except Exception as e:
+                                logger.error(f"Failed to save real-time state for SEC filing: {e}")
                         continue
 
                     payload = {
@@ -756,7 +705,17 @@ def run_extractor(
                             output = "NO_EXTRACTION"
                         else:
                             output = raw_output
+                        consecutive_ollama_failures = 0  # Reset on success
 
+                    except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as ce:
+                        consecutive_ollama_failures += 1
+                        logger.error(
+                            f"Ollama connection failed ({consecutive_ollama_failures}/3): {ce}"
+                        )
+                        if consecutive_ollama_failures >= 3:
+                            logger.critical("Ollama connection failed 3 times consecutively. Aborting extractor.")
+                            raise RuntimeError("Ollama server down. Aborted extraction pipeline.") from ce
+                        output = "NO_EXTRACTION"
                     except Exception as e:
                         logger.error(
                             f"Error processing Task {idx:02d} [{category}]: {e}"
@@ -913,32 +872,35 @@ def run_extractor(
                                             )
                                 else:
                                     category_normal_outputs[category].append(final_text)
-                                    # Buffer this article for translation
-                                    if article_url != "#":
-                                        translation_buffer.append(
-                                            {
-                                                "url": article_url,
-                                                "title": clean_title,
-                                                "body": output,
-                                            }
-                                        )
 
-                                        if len(translation_buffer) >= 4:
-                                            logger.info(
-                                                "Translation buffer full (size 4). Dispatching background translation..."
-                                            )
-                                            batch_copy = list(translation_buffer)
-                                            translation_buffer.clear()
-                                            t = threading.Thread(
-                                                target=_translate_batch,
-                                                args=(
-                                                    batch_copy,
-                                                    f"batch-{len(translation_threads) + 1}",
-                                                ),
-                                                daemon=True,
-                                            )
-                                            t.start()
-                                            translation_threads.append(t)
+                                    # Save state incrementally in real-time after each extraction
+                                    try:
+                                        with open(state_filename, "w", encoding="utf-8") as sf:
+                                            json.dump(state_data, sf, ensure_ascii=False, indent=2)
+
+                                        if report_type == "premarket":
+                                            pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+                                            new_urls = [
+                                                url for url in state_data.get("extracted_urls", [])
+                                                if url not in initial_extracted_urls
+                                            ]
+                                            new_category_normal = {}
+                                            for cat, outputs in category_normal_outputs.items():
+                                                init_outs = initial_normal_outputs.get(cat, [])
+                                                new_category_normal[cat] = [out for out in outputs if out not in init_outs]
+                                            new_category_sec = {}
+                                            for cat, outputs in category_sec_outputs.items():
+                                                init_outs = initial_sec_outputs.get(cat, [])
+                                                new_category_sec[cat] = [out for out in outputs if out not in init_outs]
+                                            pre_state_data = {
+                                                "extracted_urls": new_urls,
+                                                "category_normal_outputs": new_category_normal,
+                                                "category_sec_outputs": new_category_sec,
+                                            }
+                                            with open(pre_state_filename, "w", encoding="utf-8") as psf:
+                                                json.dump(pre_state_data, psf, ensure_ascii=False, indent=2)
+                                    except Exception as e:
+                                        logger.error(f"Failed to save real-time state: {e}")
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
@@ -950,36 +912,6 @@ def run_extractor(
 
                     except Exception as e:
                         logger.error(f"Error process Task {idx:02d} [{category}]: {e}")
-
-                # Flush remaining articles in the translation buffer
-                if translation_buffer:
-                    logger.info(
-                        f"Flushing remaining {len(translation_buffer)} articles in translation buffer..."
-                    )
-                    batch_copy = list(translation_buffer)
-                    translation_buffer.clear()
-                    t = threading.Thread(
-                        target=_translate_batch,
-                        args=(batch_copy, "final-flush"),
-                        daemon=True,
-                    )
-                    t.start()
-                    translation_threads.append(t)
-
-                # Wait for all background translation threads to finish
-                if translation_threads:
-                    logger.info(
-                        f"Waiting for {len(translation_threads)} background translation thread(s) to finish..."
-                    )
-                    for t in translation_threads:
-                        t.join()
-                    logger.info("All background translations completed.")
-
-                if translation_errors:
-                    logger.warning(
-                        f"{len(translation_errors)} translation batch(es) failed during extraction. "
-                        f"These will be retried in the translator stage."
-                    )
 
         except KeyboardInterrupt:
             logger.info("Shutdown signal received. Process terminating.")

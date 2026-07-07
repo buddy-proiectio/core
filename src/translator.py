@@ -11,6 +11,7 @@ import glob
 import json
 import os
 import re
+import signal
 import sys
 import time
 from datetime import datetime
@@ -45,6 +46,7 @@ if env_model:
     MODEL_CHAIN = [m.strip() for m in env_model.split(",") if m.strip()]
 else:
     MODEL_CHAIN = [
+        "gemini-3.1-flash-lite",
         "gemma-4-31b-it",
         "gemma-4-26b-a4b-it",
     ]
@@ -345,7 +347,7 @@ def build_payload(
 
 def call_gemini_translator_api(
     articles: List[Dict[str, str]],
-    retries_per_model: int = 3,
+    retries_per_model: int = 1,
     backoff_factor: int = 5,
     *args,
     **kwargs,
@@ -354,6 +356,7 @@ def call_gemini_translator_api(
     Calls Google AI Studio's API to translate a batch of articles in JSON mode.
     Tries each model in MODEL_CHAIN sequentially. If a model fails, is rate-limited,
     or is not found, falls back to the next model in the chain.
+    Uses exponential backoff: 5s -> 15s -> 45s between retries.
     """
     # Fetch the Gemini API Key from environment variables.
     # If the key is not defined, we raise a ValueError to prevent empty/failing API calls.
@@ -393,6 +396,7 @@ def call_gemini_translator_api(
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
         for attempt in range(retries_per_model):
+            start_time = time.time()
             try:
                 # Build payload dynamically based on caches
                 payload = build_payload(user_prompt, model, batch_system_prompt)
@@ -400,11 +404,14 @@ def call_gemini_translator_api(
                 logger.info(
                     f"Calling API for translation batch of size {len(articles)} (Attempt {attempt + 1}/{retries_per_model}) using model {model}..."
                 )
-                resp = requests.post(url, json=payload, headers=headers, timeout=180)
+                resp = requests.post(url, json=payload, headers=headers, timeout=60)
+
+                elapsed = time.time() - start_time
+                logger.info(f"Translation API response for {model} received in {elapsed:.2f}s with status {resp.status_code}")
 
                 # Check for Rate Limit (HTTP 429)
                 if resp.status_code == 429:
-                    sleep_time = backoff_factor * (attempt + 1)
+                    sleep_time = backoff_factor * (3 ** attempt)
                     logger.warning(
                         f"Rate limit (429) hit for model {model}. Sleeping for {sleep_time} seconds before retry..."
                     )
@@ -420,7 +427,7 @@ def call_gemini_translator_api(
 
                 # Server errors (500, 503): wait longer before retrying
                 if resp.status_code in (500, 503):
-                    sleep_time = backoff_factor * (attempt + 1) * 2
+                    sleep_time = backoff_factor * (3 ** attempt) * 2
                     logger.warning(
                         f"Server error ({resp.status_code}) from model {model}. Sleeping {sleep_time}s before retry..."
                     )
@@ -483,13 +490,15 @@ def call_gemini_translator_api(
                             "title": ko_title,
                             "body": ko_body,
                         }
+                logger.info(f"Successfully translated batch of {len(translations_list)} articles with {model} in {elapsed:.2f}s")
                 return mapped_results
 
             except Exception as e:
-                logger.error(f"Error calling translation API with model {model}: {e}")
+                elapsed = time.time() - start_time
+                logger.error(f"Error calling translation API with model {model} after {elapsed:.2f}s: {e}")
                 last_err = e
                 if attempt < retries_per_model - 1:
-                    sleep_time = backoff_factor * (attempt + 1)
+                    sleep_time = backoff_factor * (3 ** attempt)
                     logger.info(f"Retrying model {model} in {sleep_time} seconds...")
                     time.sleep(sleep_time)
                 else:
@@ -976,6 +985,7 @@ def run_translator(
 ) -> None:
     """
     Main entry point for translation pipeline.
+    Acquires translation.lock with PID-based preemption.
     """
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(project_root, "data")
@@ -1026,80 +1036,132 @@ def run_translator(
             except Exception as e:
                 logger.error(f"Failed to merge translated_state_pre.json: {e}")
 
-    logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
+    # Preemption Lock Check
+    trans_lock_file = os.path.join(project_root, "logs", "translation.lock")
+    if os.path.exists(trans_lock_file):
+        try:
+            with open(trans_lock_file, "r") as lf:
+                old_pid = int(lf.read().strip())
+            if os.getpid() != old_pid:
+                try:
+                    os.kill(old_pid, 0)  # Check if process exists
+                    logger.info(f"Stale translation process {old_pid} detected. Terminating it...")
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(1)
+                except OSError:
+                    logger.info(f"Previous translation process {old_pid} is no longer running.")
+        except Exception as e:
+            logger.warning(f"Error checking/killing old translation process: {e}")
 
-    if report_type == "incremental":
-        translate_new_articles(state_file, cache_file)
+    # Acquire lock for current process
+    os.makedirs(os.path.dirname(trans_lock_file), exist_ok=True)
+    try:
+        with open(trans_lock_file, "w") as lf:
+            lf.write(str(os.getpid()))
+        logger.info(f"Acquired translation.lock (PID {os.getpid()}).")
 
-    elif report_type == "premarket":
-        # 1. Prioritize selected premarket articles
-        en_report = os.path.join(data_dir, f"premarket_report_{today_str}.txt")
+        logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
 
-        # Fallback to latest premarket file if not exists
-        if not os.path.exists(en_report):
-            files = sorted(glob.glob(os.path.join(data_dir, "premarket_report_*.txt")))
-            if files:
-                en_report = files[-1]
+        if report_type == "incremental":
+            try:
+                translate_new_articles(state_file, cache_file)
+            except TranslationError as te:
+                logger.error(f"Translation pipeline failed for incremental, proceeding to draft generation: {te}")
 
-        premarket_urls = extract_urls_from_report(en_report)
-        logger.info(
-            f"Premarket report selected {len(premarket_urls)} articles for translation."
-        )
+        elif report_type == "premarket":
+            pre_state_file = os.path.join(data_dir, "extracted_state_pre.json")
 
-        # Translate only selected premarket articles first
-        translate_new_articles(state_file, cache_file, limit_urls=premarket_urls)
+            # 1. Prioritize selected premarket articles from delta pre file
+            en_report = os.path.join(data_dir, f"premarket_report_{today_str}.txt")
 
-        # Check and translate any missing articles from the report before generating draft
-        translate_missing_report_articles(en_report, cache_file)
+            # Fallback to latest premarket file if not exists
+            if not os.path.exists(en_report):
+                files = sorted(glob.glob(os.path.join(data_dir, "premarket_report_*.txt")))
+                if files:
+                    en_report = files[-1]
 
-        # Generate KST premarket draft and format it immediately
-        ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
-        generate_korean_premarket_draft(en_report, ko_draft, cache_file)
+            premarket_urls = extract_urls_from_report(en_report)
+            logger.info(
+                f"Premarket report selected {len(premarket_urls)} articles for translation."
+            )
 
-        ko_output_dir = os.path.join(data_dir, "premarket")
-        os.makedirs(ko_output_dir, exist_ok=True)
-        ko_final_report = os.path.join(
-            ko_output_dir, f"alpha_signal_premarket_{today_str}_ko.md"
-        )
+            # Translate only selected premarket articles from delta pre state
+            try:
+                translate_new_articles(pre_state_file, cache_file, limit_urls=premarket_urls)
+            except TranslationError as te:
+                logger.error(f"Premarket delta translation failed, proceeding: {te}")
 
-        run_formatter(ko_draft, ko_final_report, lang="ko")
-        logger.info(
-            f"Successfully generated final Korean premarket report at {ko_final_report}"
-        )
+            # Check and translate any missing articles from the report before generating draft
+            try:
+                translate_missing_report_articles(en_report, cache_file)
+            except TranslationError as te:
+                logger.error(f"Premarket missing articles translation failed, proceeding: {te}")
 
-        # 2. In the background, translate all remaining premarket articles
-        logger.info("Proceeding to translate all remaining articles in state...")
-        translate_new_articles(state_file, cache_file)
+            # Generate KST premarket draft and format it immediately
+            ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
+            generate_korean_premarket_draft(en_report, ko_draft, cache_file)
 
-        # Sync the premarket translation cache to the premarket delta
-        pre_state_file = os.path.join(data_dir, "extracted_state_pre.json")
-        sync_premarket_cache_to_delta(cache_file, pre_state_file, en_report)
+            ko_output_dir = os.path.join(data_dir, "premarket")
+            os.makedirs(ko_output_dir, exist_ok=True)
+            ko_final_report = os.path.join(
+                ko_output_dir, f"alpha_signal_premarket_{today_str}_ko.md"
+            )
 
-    elif report_type == "full":
-        # 1. Translate all articles to complete the cache
-        translate_new_articles(state_file, cache_file)
+            run_formatter(ko_draft, ko_final_report, lang="ko")
+            logger.info(
+                f"Successfully generated final Korean premarket report at {ko_final_report}"
+            )
 
-        # 2. Read full English report
-        en_report = os.path.join(data_dir, f"final_report_{today_str}.txt")
-        if not os.path.exists(en_report):
-            files = sorted(glob.glob(os.path.join(data_dir, "final_report_*.txt")))
-            if files:
-                en_report = files[-1]
+            # 2. Translate all remaining articles from delta pre state
+            logger.info("Proceeding to translate all remaining articles in premarket state...")
+            try:
+                translate_new_articles(pre_state_file, cache_file)
+            except TranslationError as te:
+                logger.error(f"Premarket remaining articles translation failed, proceeding: {te}")
 
-        # Check and translate any missing articles from the report before generating draft
-        translate_missing_report_articles(en_report, cache_file)
+            # Sync the premarket translation cache to the premarket delta
+            sync_premarket_cache_to_delta(cache_file, pre_state_file, en_report)
 
-        ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
-        generate_korean_full_draft(en_report, ko_draft, cache_file)
+        elif report_type == "full":
+            # 1. Translate all articles to complete the cache
+            try:
+                translate_new_articles(state_file, cache_file)
+            except TranslationError as te:
+                logger.error(f"Full pipeline translation failed, proceeding to draft generation: {te}")
 
-        ko_output_dir = os.path.join(data_dir, "report")
-        os.makedirs(ko_output_dir, exist_ok=True)
-        ko_final_report = os.path.join(ko_output_dir, f"alpha_signal_{today_str}_ko.md")
+            # 2. Read full English report
+            en_report = os.path.join(data_dir, f"final_report_{today_str}.txt")
+            if not os.path.exists(en_report):
+                files = sorted(glob.glob(os.path.join(data_dir, "final_report_*.txt")))
+                if files:
+                    en_report = files[-1]
 
-        run_formatter(ko_draft, ko_final_report, lang="ko")
-        logger.info(
-            f"Successfully generated final Korean full report at {ko_final_report}"
-        )
+            # Check and translate any missing articles from the report before generating draft
+            try:
+                translate_missing_report_articles(en_report, cache_file)
+            except TranslationError as te:
+                logger.error(f"Full pipeline missing articles translation failed, proceeding: {te}")
+
+            ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
+            generate_korean_full_draft(en_report, ko_draft, cache_file)
+
+            ko_output_dir = os.path.join(data_dir, "report")
+            os.makedirs(ko_output_dir, exist_ok=True)
+            ko_final_report = os.path.join(ko_output_dir, f"alpha_signal_{today_str}_ko.md")
+
+            run_formatter(ko_draft, ko_final_report, lang="ko")
+            logger.info(
+                f"Successfully generated final Korean full report at {ko_final_report}"
+            )
+
+    finally:
+        # Remove translation.lock
+        if os.path.exists(trans_lock_file):
+            try:
+                os.remove(trans_lock_file)
+                logger.info("translation.lock removed.")
+            except Exception as e:
+                logger.warning(f"Failed to remove translation.lock: {e}")
 
 
 if __name__ == "__main__":
