@@ -311,6 +311,47 @@ def verify_exact_match(output: str, original_content: str) -> bool:
     return True
 
 
+def _save_incremental_state(
+    state_filename: str,
+    state_data: dict,
+    report_type: str,
+    data_dir: str,
+    initial_extracted_urls: set,
+    initial_normal_outputs: dict,
+    initial_sec_outputs: dict,
+    category_normal_outputs: dict,
+    category_sec_outputs: dict,
+) -> None:
+    """Helper to write current extraction state incrementally to disk."""
+    try:
+        with open(state_filename, "w", encoding="utf-8") as sf:
+            json.dump(state_data, sf, ensure_ascii=False, indent=2)
+
+        if report_type == "premarket":
+            pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+            new_urls = [
+                url for url in state_data.get("extracted_urls", [])
+                if url not in initial_extracted_urls
+            ]
+            new_category_normal = {}
+            for cat, outputs in category_normal_outputs.items():
+                init_outs = initial_normal_outputs.get(cat, [])
+                new_category_normal[cat] = [out for out in outputs if out not in init_outs]
+            new_category_sec = {}
+            for cat, outputs in category_sec_outputs.items():
+                init_outs = initial_sec_outputs.get(cat, [])
+                new_category_sec[cat] = [out for out in outputs if out not in init_outs]
+            pre_state_data = {
+                "extracted_urls": new_urls,
+                "category_normal_outputs": new_category_normal,
+                "category_sec_outputs": new_category_sec,
+            }
+            with open(pre_state_filename, "w", encoding="utf-8") as psf:
+                json.dump(pre_state_data, psf, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save real-time state: {e}")
+
+
 def run_extractor(
     data_dir: typing.Optional[str] = None,
     report_type: typing.Optional[str] = None,
@@ -660,15 +701,17 @@ def run_extractor(
                             extracted_urls_set.add(article_url)
                             extracted_urls.append(article_url)
                             # Save state incrementally
-                            try:
-                                with open(state_filename, "w", encoding="utf-8") as sf:
-                                    json.dump(
-                                        state_data, sf, ensure_ascii=False, indent=2
-                                    )
-                            except Exception as e:
-                                logger.error(
-                                    f"Failed to save real-time state for SEC filing: {e}"
-                                )
+                            _save_incremental_state(
+                                state_filename,
+                                state_data,
+                                report_type,
+                                data_dir,
+                                initial_extracted_urls,
+                                initial_normal_outputs,
+                                initial_sec_outputs,
+                                category_normal_outputs,
+                                category_sec_outputs,
+                            )
                         continue
 
                     payload = {
@@ -863,74 +906,17 @@ def run_extractor(
                                     category_normal_outputs[category].append(final_text)
 
                                     # Save state incrementally in real-time after each extraction
-                                    try:
-                                        with open(
-                                            state_filename, "w", encoding="utf-8"
-                                        ) as sf:
-                                            json.dump(
-                                                state_data,
-                                                sf,
-                                                ensure_ascii=False,
-                                                indent=2,
-                                            )
-
-                                        if report_type == "premarket":
-                                            pre_state_filename = os.path.join(
-                                                data_dir, "extracted_state_pre.json"
-                                            )
-                                            new_urls = [
-                                                url
-                                                for url in state_data.get(
-                                                    "extracted_urls", []
-                                                )
-                                                if url not in initial_extracted_urls
-                                            ]
-                                            new_category_normal = {}
-                                            for (
-                                                cat,
-                                                outputs,
-                                            ) in category_normal_outputs.items():
-                                                init_outs = initial_normal_outputs.get(
-                                                    cat, []
-                                                )
-                                                new_category_normal[cat] = [
-                                                    out
-                                                    for out in outputs
-                                                    if out not in init_outs
-                                                ]
-                                            new_category_sec = {}
-                                            for (
-                                                cat,
-                                                outputs,
-                                            ) in category_sec_outputs.items():
-                                                init_outs = initial_sec_outputs.get(
-                                                    cat, []
-                                                )
-                                                new_category_sec[cat] = [
-                                                    out
-                                                    for out in outputs
-                                                    if out not in init_outs
-                                                ]
-                                            pre_state_data = {
-                                                "extracted_urls": new_urls,
-                                                "category_normal_outputs": new_category_normal,
-                                                "category_sec_outputs": new_category_sec,
-                                            }
-                                            with open(
-                                                pre_state_filename,
-                                                "w",
-                                                encoding="utf-8",
-                                            ) as psf:
-                                                json.dump(
-                                                    pre_state_data,
-                                                    psf,
-                                                    ensure_ascii=False,
-                                                    indent=2,
-                                                )
-                                    except Exception as e:
-                                        logger.error(
-                                            f"Failed to save real-time state: {e}"
-                                        )
+                                    _save_incremental_state(
+                                        state_filename,
+                                        state_data,
+                                        report_type,
+                                        data_dir,
+                                        initial_extracted_urls,
+                                        initial_normal_outputs,
+                                        initial_sec_outputs,
+                                        category_normal_outputs,
+                                        category_sec_outputs,
+                                    )
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
@@ -948,50 +934,17 @@ def run_extractor(
             logger.info("Saving partially extracted progress before exiting...")
 
         # Save the updated state
-        try:
-            with open(state_filename, "w", encoding="utf-8") as sf:
-                json.dump(state_data, sf, ensure_ascii=False, indent=2)
-
-            # If this is a premarket run, also save a copy to extracted_state_pre.json (only new premarket data)
-            if report_type == "premarket":
-                pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
-
-                # Filter only new URLs
-                new_urls = [
-                    url
-                    for url in state_data.get("extracted_urls", [])
-                    if url not in initial_extracted_urls
-                ]
-
-                # Filter only new normal outputs
-                new_category_normal = {}
-                for cat, outputs in category_normal_outputs.items():
-                    init_outs = initial_normal_outputs.get(cat, [])
-                    new_category_normal[cat] = [
-                        out for out in outputs if out not in init_outs
-                    ]
-
-                # Filter only new sec outputs
-                new_category_sec = {}
-                for cat, outputs in category_sec_outputs.items():
-                    init_outs = initial_sec_outputs.get(cat, [])
-                    new_category_sec[cat] = [
-                        out for out in outputs if out not in init_outs
-                    ]
-
-                pre_state_data = {
-                    "extracted_urls": new_urls,
-                    "category_normal_outputs": new_category_normal,
-                    "category_sec_outputs": new_category_sec,
-                }
-
-                with open(pre_state_filename, "w", encoding="utf-8") as psf:
-                    json.dump(pre_state_data, psf, ensure_ascii=False, indent=2)
-                logger.info(
-                    f"Saved premarket cache to extracted_state_pre.json with {len(new_urls)} new URLs."
-                )
-        except Exception as e:
-            logger.error(f"Failed to save state file: {e}")
+        _save_incremental_state(
+            state_filename,
+            state_data,
+            report_type,
+            data_dir,
+            initial_extracted_urls,
+            initial_normal_outputs,
+            initial_sec_outputs,
+            category_normal_outputs,
+            category_sec_outputs,
+        )
 
         # Save output to text file with filtering
         with open(output_filename, "w", encoding="utf-8") as out_f:

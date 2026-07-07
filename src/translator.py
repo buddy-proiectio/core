@@ -980,6 +980,33 @@ def generate_korean_full_draft(
     return True
 
 
+def _acquire_preemption_lock(lock_file: str) -> None:
+    """Check for stale translation process, terminate it, and acquire lock for current process."""
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file, "r") as lf:
+                old_pid = int(lf.read().strip())
+            if os.getpid() != old_pid:
+                try:
+                    os.kill(old_pid, 0)  # Check if process exists
+                    logger.info(f"Stale translation process {old_pid} detected. Terminating it...")
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(1)
+                except OSError:
+                    logger.info(f"Previous translation process {old_pid} is no longer running.")
+        except Exception as e:
+            logger.warning(f"Error checking/killing old translation process: {e}")
+
+    # Acquire lock for current process
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+    try:
+        with open(lock_file, "w") as lf:
+            lf.write(str(os.getpid()))
+        logger.info(f"Acquired translation.lock (PID {os.getpid()}).")
+    except Exception as e:
+        logger.error(f"Failed to write translation.lock: {e}")
+
+
 def run_translator(
     report_type: str = "full", target_date: Optional[str] = None
 ) -> None:
@@ -1038,28 +1065,9 @@ def run_translator(
 
     # Preemption Lock Check
     trans_lock_file = os.path.join(project_root, "logs", "translation.lock")
-    if os.path.exists(trans_lock_file):
-        try:
-            with open(trans_lock_file, "r") as lf:
-                old_pid = int(lf.read().strip())
-            if os.getpid() != old_pid:
-                try:
-                    os.kill(old_pid, 0)  # Check if process exists
-                    logger.info(f"Stale translation process {old_pid} detected. Terminating it...")
-                    os.kill(old_pid, signal.SIGTERM)
-                    time.sleep(1)
-                except OSError:
-                    logger.info(f"Previous translation process {old_pid} is no longer running.")
-        except Exception as e:
-            logger.warning(f"Error checking/killing old translation process: {e}")
+    _acquire_preemption_lock(trans_lock_file)
 
-    # Acquire lock for current process
-    os.makedirs(os.path.dirname(trans_lock_file), exist_ok=True)
     try:
-        with open(trans_lock_file, "w") as lf:
-            lf.write(str(os.getpid()))
-        logger.info(f"Acquired translation.lock (PID {os.getpid()}).")
-
         logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
 
         if report_type == "incremental":
