@@ -21,7 +21,8 @@ from sentence_transformers import SentenceTransformer
 import pytz
 import requests
 import torch
-from huggingface_hub.utils import disable_progress_bars, logging as hf_hub_logging
+from huggingface_hub.utils.tqdm import disable_progress_bars
+from huggingface_hub.utils import logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
 
@@ -314,7 +315,7 @@ def verify_exact_match(output: str, original_content: str) -> bool:
 def _save_incremental_state(
     state_filename: str,
     state_data: dict,
-    report_type: str,
+    report_type: typing.Optional[str],
     data_dir: str,
     initial_extracted_urls: set,
     initial_normal_outputs: dict,
@@ -330,13 +331,16 @@ def _save_incremental_state(
         if report_type == "premarket":
             pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
             new_urls = [
-                url for url in state_data.get("extracted_urls", [])
+                url
+                for url in state_data.get("extracted_urls", [])
                 if url not in initial_extracted_urls
             ]
             new_category_normal = {}
             for cat, outputs in category_normal_outputs.items():
                 init_outs = initial_normal_outputs.get(cat, [])
-                new_category_normal[cat] = [out for out in outputs if out not in init_outs]
+                new_category_normal[cat] = [
+                    out for out in outputs if out not in init_outs
+                ]
             new_category_sec = {}
             for cat, outputs in category_sec_outputs.items():
                 init_outs = initial_sec_outputs.get(cat, [])

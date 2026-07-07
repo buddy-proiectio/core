@@ -407,11 +407,13 @@ def call_gemini_translator_api(
                 resp = requests.post(url, json=payload, headers=headers, timeout=60)
 
                 elapsed = time.time() - start_time
-                logger.info(f"Translation API response for {model} received in {elapsed:.2f}s with status {resp.status_code}")
+                logger.info(
+                    f"Translation API response for {model} received in {elapsed:.2f}s with status {resp.status_code}"
+                )
 
                 # Check for Rate Limit (HTTP 429)
                 if resp.status_code == 429:
-                    sleep_time = backoff_factor * (3 ** attempt)
+                    sleep_time = backoff_factor * (3**attempt)
                     logger.warning(
                         f"Rate limit (429) hit for model {model}. Sleeping for {sleep_time} seconds before retry..."
                     )
@@ -427,7 +429,7 @@ def call_gemini_translator_api(
 
                 # Server errors (500, 503): wait longer before retrying
                 if resp.status_code in (500, 503):
-                    sleep_time = backoff_factor * (3 ** attempt) * 2
+                    sleep_time = backoff_factor * (3**attempt) * 2
                     logger.warning(
                         f"Server error ({resp.status_code}) from model {model}. Sleeping {sleep_time}s before retry..."
                     )
@@ -490,15 +492,19 @@ def call_gemini_translator_api(
                             "title": ko_title,
                             "body": ko_body,
                         }
-                logger.info(f"Successfully translated batch of {len(translations_list)} articles with {model} in {elapsed:.2f}s")
+                logger.info(
+                    f"Successfully translated batch of {len(translations_list)} articles with {model} in {elapsed:.2f}s"
+                )
                 return mapped_results
 
             except Exception as e:
                 elapsed = time.time() - start_time
-                logger.error(f"Error calling translation API with model {model} after {elapsed:.2f}s: {e}")
+                logger.error(
+                    f"Error calling translation API with model {model} after {elapsed:.2f}s: {e}"
+                )
                 last_err = e
                 if attempt < retries_per_model - 1:
-                    sleep_time = backoff_factor * (3 ** attempt)
+                    sleep_time = backoff_factor * (3**attempt)
                     logger.info(f"Retrying model {model} in {sleep_time} seconds...")
                     time.sleep(sleep_time)
                 else:
@@ -989,11 +995,15 @@ def _acquire_preemption_lock(lock_file: str) -> None:
             if os.getpid() != old_pid:
                 try:
                     os.kill(old_pid, 0)  # Check if process exists
-                    logger.info(f"Stale translation process {old_pid} detected. Terminating it...")
+                    logger.info(
+                        f"Stale translation process {old_pid} detected. Terminating it..."
+                    )
                     os.kill(old_pid, signal.SIGTERM)
                     time.sleep(1)
                 except OSError:
-                    logger.info(f"Previous translation process {old_pid} is no longer running.")
+                    logger.info(
+                        f"Previous translation process {old_pid} is no longer running."
+                    )
         except Exception as e:
             logger.warning(f"Error checking/killing old translation process: {e}")
 
@@ -1074,7 +1084,9 @@ def run_translator(
             try:
                 translate_new_articles(state_file, cache_file)
             except TranslationError as te:
-                logger.error(f"Translation pipeline failed for incremental, proceeding to draft generation: {te}")
+                logger.error(
+                    f"Translation pipeline failed for incremental, proceeding to draft generation: {te}"
+                )
 
         elif report_type == "premarket":
             pre_state_file = os.path.join(data_dir, "extracted_state_pre.json")
@@ -1084,7 +1096,9 @@ def run_translator(
 
             # Fallback to latest premarket file if not exists
             if not os.path.exists(en_report):
-                files = sorted(glob.glob(os.path.join(data_dir, "premarket_report_*.txt")))
+                files = sorted(
+                    glob.glob(os.path.join(data_dir, "premarket_report_*.txt"))
+                )
                 if files:
                     en_report = files[-1]
 
@@ -1095,7 +1109,9 @@ def run_translator(
 
             # Translate only selected premarket articles from delta pre state
             try:
-                translate_new_articles(pre_state_file, cache_file, limit_urls=premarket_urls)
+                translate_new_articles(
+                    pre_state_file, cache_file, limit_urls=premarket_urls
+                )
             except TranslationError as te:
                 logger.error(f"Premarket delta translation failed, proceeding: {te}")
 
@@ -1103,7 +1119,9 @@ def run_translator(
             try:
                 translate_missing_report_articles(en_report, cache_file)
             except TranslationError as te:
-                logger.error(f"Premarket missing articles translation failed, proceeding: {te}")
+                logger.error(
+                    f"Premarket missing articles translation failed, proceeding: {te}"
+                )
 
             # Generate KST premarket draft and format it immediately
             ko_draft = os.path.join(data_dir, f"premarket_report_ko_{today_str}.txt")
@@ -1121,11 +1139,15 @@ def run_translator(
             )
 
             # 2. Translate all remaining articles from delta pre state
-            logger.info("Proceeding to translate all remaining articles in premarket state...")
+            logger.info(
+                "Proceeding to translate all remaining articles in premarket state..."
+            )
             try:
                 translate_new_articles(pre_state_file, cache_file)
             except TranslationError as te:
-                logger.error(f"Premarket remaining articles translation failed, proceeding: {te}")
+                logger.error(
+                    f"Premarket remaining articles translation failed, proceeding: {te}"
+                )
 
             # Sync the premarket translation cache to the premarket delta
             sync_premarket_cache_to_delta(cache_file, pre_state_file, en_report)
@@ -1135,7 +1157,9 @@ def run_translator(
             try:
                 translate_new_articles(state_file, cache_file)
             except TranslationError as te:
-                logger.error(f"Full pipeline translation failed, proceeding to draft generation: {te}")
+                logger.error(
+                    f"Full pipeline translation failed, proceeding to draft generation: {te}"
+                )
 
             # 2. Read full English report
             en_report = os.path.join(data_dir, f"final_report_{today_str}.txt")
@@ -1148,14 +1172,18 @@ def run_translator(
             try:
                 translate_missing_report_articles(en_report, cache_file)
             except TranslationError as te:
-                logger.error(f"Full pipeline missing articles translation failed, proceeding: {te}")
+                logger.error(
+                    f"Full pipeline missing articles translation failed, proceeding: {te}"
+                )
 
             ko_draft = os.path.join(data_dir, f"final_report_ko_{today_str}.txt")
             generate_korean_full_draft(en_report, ko_draft, cache_file)
 
             ko_output_dir = os.path.join(data_dir, "report")
             os.makedirs(ko_output_dir, exist_ok=True)
-            ko_final_report = os.path.join(ko_output_dir, f"alpha_signal_{today_str}_ko.md")
+            ko_final_report = os.path.join(
+                ko_output_dir, f"alpha_signal_{today_str}_ko.md"
+            )
 
             run_formatter(ko_draft, ko_final_report, lang="ko")
             logger.info(
