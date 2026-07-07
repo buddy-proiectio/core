@@ -605,6 +605,20 @@ def run_extractor(
 
         output_filename = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
+        # Cache file path configuration for SEC filing translation bypass
+        if report_type == "premarket":
+            cache_file = os.path.join(data_dir, "translated_state_pre.json")
+        else:
+            cache_file = os.path.join(data_dir, f"translated_state_{today_str}.json")
+
+        translation_cache: dict[str, dict[str, str]] = {}
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as cf:
+                    translation_cache = json.load(cf)
+            except Exception as ce:
+                logger.warning(f"Could not load existing translation cache: {ce}")
+
         # Use the state loaded earlier
         category_normal_outputs = typing.cast(
             dict[str, list[str]], state_data["category_normal_outputs"]
@@ -660,6 +674,17 @@ def run_extractor(
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
                             extracted_urls.append(article_url)
+                            # SEC filings do not require translation. Cache empty body directly.
+                            if article_url != "#":
+                                translation_cache[article_url] = {
+                                    "title": clean_title,
+                                    "body": "",
+                                }
+                                try:
+                                    with open(cache_file, "w", encoding="utf-8") as cf:
+                                        json.dump(translation_cache, cf, ensure_ascii=False, indent=2)
+                                except Exception as ce:
+                                    logger.error(f"Failed to update SEC cache: {ce}")
                             # Save state incrementally
                             try:
                                 with open(state_filename, "w", encoding="utf-8") as sf:
