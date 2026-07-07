@@ -86,21 +86,23 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         self.assertTrue(result)
 
         # 6. Assertions:
-        # SEC filings should be bypassed and written directly into the cache.
-        # Check translated_state JSON file exists
-        cache_file = os.path.join(
-            self.test_dir, f"translated_state_{self.today_str}.json"
+        # Check that extracted_state JSON file exists
+        state_file = os.path.join(
+            self.test_dir, f"extracted_state_{self.today_str}.json"
         )
-        self.assertTrue(os.path.exists(cache_file))
+        self.assertTrue(os.path.exists(state_file))
 
-        with open(cache_file, "r", encoding="utf-8") as cf:
-            cache_data = json.load(cf)
+        with open(state_file, "r", encoding="utf-8") as sf:
+            state_data = json.load(sf)
 
-        # Assert SEC filings have empty translations
-        self.assertIn("https://sec.com/a", cache_data)
-        self.assertEqual(cache_data["https://sec.com/a"]["body"], "")
-        self.assertIn("https://sec.com/b", cache_data)
-        self.assertEqual(cache_data["https://sec.com/b"]["body"], "")
+        # Verify that all articles are added to the extracted urls list
+        self.assertIn("https://sec.com/a", state_data["extracted_urls"])
+        self.assertIn("https://art1.com", state_data["extracted_urls"])
+        self.assertIn("https://sec.com/b", state_data["extracted_urls"])
+
+        # Check normal output categories and sec categories
+        self.assertEqual(len(state_data["category_sec_outputs"]["General"]), 2)
+        self.assertEqual(len(state_data["category_normal_outputs"]["General"]), 1)
 
     @patch("extractor.SentenceTransformer")
     @patch("extractor.verify_exact_match")

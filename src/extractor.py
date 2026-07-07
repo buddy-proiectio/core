@@ -26,7 +26,6 @@ from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
 
 
-
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -605,20 +604,6 @@ def run_extractor(
 
         output_filename = os.path.join(data_dir, f"extracted_facts_{today_str}.txt")
 
-        # Cache file path configuration for SEC filing translation bypass
-        if report_type == "premarket":
-            cache_file = os.path.join(data_dir, "translated_state_pre.json")
-        else:
-            cache_file = os.path.join(data_dir, f"translated_state_{today_str}.json")
-
-        translation_cache: dict[str, dict[str, str]] = {}
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, "r", encoding="utf-8") as cf:
-                    translation_cache = json.load(cf)
-            except Exception as ce:
-                logger.warning(f"Could not load existing translation cache: {ce}")
-
         # Use the state loaded earlier
         category_normal_outputs = typing.cast(
             dict[str, list[str]], state_data["category_normal_outputs"]
@@ -674,23 +659,16 @@ def run_extractor(
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
                             extracted_urls.append(article_url)
-                            # SEC filings do not require translation. Cache empty body directly.
-                            if article_url != "#":
-                                translation_cache[article_url] = {
-                                    "title": clean_title,
-                                    "body": "",
-                                }
-                                try:
-                                    with open(cache_file, "w", encoding="utf-8") as cf:
-                                        json.dump(translation_cache, cf, ensure_ascii=False, indent=2)
-                                except Exception as ce:
-                                    logger.error(f"Failed to update SEC cache: {ce}")
                             # Save state incrementally
                             try:
                                 with open(state_filename, "w", encoding="utf-8") as sf:
-                                    json.dump(state_data, sf, ensure_ascii=False, indent=2)
+                                    json.dump(
+                                        state_data, sf, ensure_ascii=False, indent=2
+                                    )
                             except Exception as e:
-                                logger.error(f"Failed to save real-time state for SEC filing: {e}")
+                                logger.error(
+                                    f"Failed to save real-time state for SEC filing: {e}"
+                                )
                         continue
 
                     payload = {
@@ -732,14 +710,21 @@ def run_extractor(
                             output = raw_output
                         consecutive_ollama_failures = 0  # Reset on success
 
-                    except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as ce:
+                    except (
+                        requests.exceptions.ConnectionError,
+                        requests.exceptions.HTTPError,
+                    ) as ce:
                         consecutive_ollama_failures += 1
                         logger.error(
                             f"Ollama connection failed ({consecutive_ollama_failures}/3): {ce}"
                         )
                         if consecutive_ollama_failures >= 3:
-                            logger.critical("Ollama connection failed 3 times consecutively. Aborting extractor.")
-                            raise RuntimeError("Ollama server down. Aborted extraction pipeline.") from ce
+                            logger.critical(
+                                "Ollama connection failed 3 times consecutively. Aborting extractor."
+                            )
+                            raise RuntimeError(
+                                "Ollama server down. Aborted extraction pipeline."
+                            ) from ce
                         output = "NO_EXTRACTION"
                     except Exception as e:
                         logger.error(
@@ -867,7 +852,6 @@ def run_extractor(
                                     ):
                                         is_dup = True
                                         break
-
                             if not is_dup:
                                 if re.search(
                                     r"\b(8-K|10-K|10-Q|SEC Filing)\b",
@@ -875,57 +859,78 @@ def run_extractor(
                                     re.IGNORECASE,
                                 ):
                                     category_sec_outputs[category].append(final_text)
-                                    # SEC filings do not require translation. Cache empty body directly
-                                    if article_url != "#":
-                                        translation_cache[article_url] = {
-                                            "title": clean_title,
-                                            "body": "",
-                                        }
-                                        try:
-                                            with open(
-                                                cache_file, "w", encoding="utf-8"
-                                            ) as cf:
-                                                json.dump(
-                                                    translation_cache,
-                                                    cf,
-                                                    ensure_ascii=False,
-                                                    indent=2,
-                                                )
-                                        except Exception as ce:
-                                            logger.error(
-                                                f"Failed to update SEC cache: {ce}"
-                                            )
                                 else:
                                     category_normal_outputs[category].append(final_text)
 
                                     # Save state incrementally in real-time after each extraction
                                     try:
-                                        with open(state_filename, "w", encoding="utf-8") as sf:
-                                            json.dump(state_data, sf, ensure_ascii=False, indent=2)
+                                        with open(
+                                            state_filename, "w", encoding="utf-8"
+                                        ) as sf:
+                                            json.dump(
+                                                state_data,
+                                                sf,
+                                                ensure_ascii=False,
+                                                indent=2,
+                                            )
 
                                         if report_type == "premarket":
-                                            pre_state_filename = os.path.join(data_dir, "extracted_state_pre.json")
+                                            pre_state_filename = os.path.join(
+                                                data_dir, "extracted_state_pre.json"
+                                            )
                                             new_urls = [
-                                                url for url in state_data.get("extracted_urls", [])
+                                                url
+                                                for url in state_data.get(
+                                                    "extracted_urls", []
+                                                )
                                                 if url not in initial_extracted_urls
                                             ]
                                             new_category_normal = {}
-                                            for cat, outputs in category_normal_outputs.items():
-                                                init_outs = initial_normal_outputs.get(cat, [])
-                                                new_category_normal[cat] = [out for out in outputs if out not in init_outs]
+                                            for (
+                                                cat,
+                                                outputs,
+                                            ) in category_normal_outputs.items():
+                                                init_outs = initial_normal_outputs.get(
+                                                    cat, []
+                                                )
+                                                new_category_normal[cat] = [
+                                                    out
+                                                    for out in outputs
+                                                    if out not in init_outs
+                                                ]
                                             new_category_sec = {}
-                                            for cat, outputs in category_sec_outputs.items():
-                                                init_outs = initial_sec_outputs.get(cat, [])
-                                                new_category_sec[cat] = [out for out in outputs if out not in init_outs]
+                                            for (
+                                                cat,
+                                                outputs,
+                                            ) in category_sec_outputs.items():
+                                                init_outs = initial_sec_outputs.get(
+                                                    cat, []
+                                                )
+                                                new_category_sec[cat] = [
+                                                    out
+                                                    for out in outputs
+                                                    if out not in init_outs
+                                                ]
                                             pre_state_data = {
                                                 "extracted_urls": new_urls,
                                                 "category_normal_outputs": new_category_normal,
                                                 "category_sec_outputs": new_category_sec,
                                             }
-                                            with open(pre_state_filename, "w", encoding="utf-8") as psf:
-                                                json.dump(pre_state_data, psf, ensure_ascii=False, indent=2)
+                                            with open(
+                                                pre_state_filename,
+                                                "w",
+                                                encoding="utf-8",
+                                            ) as psf:
+                                                json.dump(
+                                                    pre_state_data,
+                                                    psf,
+                                                    ensure_ascii=False,
+                                                    indent=2,
+                                                )
                                     except Exception as e:
-                                        logger.error(f"Failed to save real-time state: {e}")
+                                        logger.error(
+                                            f"Failed to save real-time state: {e}"
+                                        )
 
                             # Mark as extracted
                             extracted_urls_set.add(article_url)
