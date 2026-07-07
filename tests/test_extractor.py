@@ -123,7 +123,9 @@ class TestExtractorRealTimeTranslation(unittest.TestCase):
         mock_verify.return_value = True
 
         # 3. Mock requests.Session.post to raise ConnectionError
-        mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        mock_post.side_effect = requests.exceptions.ConnectionError(
+            "Connection refused"
+        )
 
         # 4. Create 3 normal articles (enough to trigger 3 consecutive failures)
         articles = [
