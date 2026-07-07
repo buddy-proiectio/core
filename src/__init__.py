@@ -287,6 +287,11 @@ def run_all(report_type: str = "full"):
         run_extractor(report_type=report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
+        # Release buddy.lock early after extraction completes
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            logger.info("Main buddy.lock released early after successful extraction.")
+
         if report_type == "incremental":
             logger.info("Running Translator for Incremental...")
             run_translator(report_type, target_date=today_str)
