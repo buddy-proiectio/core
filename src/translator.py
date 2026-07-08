@@ -825,11 +825,6 @@ def sync_premarket_cache_to_delta(
         except Exception as e:
             logger.error(f"Failed to load pre_state in sync_premarket_cache: {e}")
 
-    # 2. From premarket_report
-    if os.path.exists(en_report_file):
-        report_urls = extract_urls_from_report(en_report_file)
-        allowed_urls.update(report_urls)
-
     # Filter cache
     filtered_cache = {url: val for url, val in cache.items() if url in allowed_urls}
 
