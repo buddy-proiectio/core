@@ -422,8 +422,8 @@ def format_content(
             if "**Topline Signals**" in line:
                 found_topline = True
 
-            # If we found topline and this line is exactly "---", skip it
-            if found_topline and stripped == "---":
+            # If we found topline and this line is exactly "---" or "***", skip it
+            if found_topline and (stripped == "---" or "***" in stripped):
                 continue
         processed_lines.append(line)
 
