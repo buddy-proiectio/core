@@ -911,17 +911,93 @@ def generate_korean_full_draft(
         with open(cache_file, "r", encoding="utf-8") as f:
             cache = json.load(f)
 
-    # 1. Strip ### Daily Point
+    # 1. Translate & Extract ### Daily Point
     dp_match = re.search(r"###\s+Daily\s+Point", content, re.IGNORECASE)
+    ko_daily_point = ""
+
     if dp_match:
         start_dp = dp_match.start()
+        # Since we parse the English report, search only for the English header "Weekly Schedule".
         next_sec = re.search(
-            r"(\n###\s+Weekly\s+Schedule|\n###\s+주간\s*일정)",
+            r"\n###\s+Weekly\s+Schedule",
             content[dp_match.end() :],
             re.IGNORECASE,
         )
         if next_sec:
             end_dp = dp_match.end() + next_sec.start()
+            en_dp_content = content[start_dp:end_dp].strip()
+
+            # Split into non-translated parts (header + index metrics + Topline Signals title) and translated parts (the rest).
+            topline_match = re.search(
+                r"\*\*Topline\s+Signals\*\*", en_dp_content, re.IGNORECASE
+            )
+            if topline_match:
+                non_trans_part = en_dp_content[: topline_match.end()].strip()
+                trans_part = en_dp_content[topline_match.end() :].strip()
+            else:
+                # Fallback path if the Topline Signals header is missing.
+                lines = en_dp_content.split("\n")
+                last_index_line = -1
+                for idx, line in enumerate(lines):
+                    if line.strip().startswith("_ "):
+                        last_index_line = idx
+                if last_index_line != -1:
+                    non_trans_part = "\n".join(lines[: last_index_line + 1]).strip()
+                    trans_part = "\n".join(lines[last_index_line + 1 :]).strip()
+                else:
+                    non_trans_part = "### Daily Point"
+                    trans_part = en_dp_content.replace("### Daily Point", "").strip()
+
+            # Check translation cache or invoke translation API.
+            cache_key = "__daily_point_commentary__"
+            if cache_key in cache:
+                ko_dp_body = cache[cache_key]["body"]
+                logger.info("Daily Point block translation loaded from cache.")
+            else:
+                try:
+                    logger.info(
+                        "Daily Point translation cache missing. Requesting LLM translation..."
+                    )
+
+                    # Construct input payload for the existing translation API (avoids code duplication).
+                    dp_article = [
+                        {
+                            "url": "daily_point",
+                            "title": "Daily Point",
+                            "body": trans_part,
+                        }
+                    ]
+                    translations = call_gemini_translator_api(dp_article)
+
+                    if "daily_point" in translations:
+                        ko_dp_body = translations["daily_point"]["body"]
+                        # Post-process: replacement of 'Good day' / 'Good day.' with '안녕하세요.' (guarantees 1:1 mapping).
+                        ko_dp_body = re.sub(
+                            r"\bGood\s+day\.?",
+                            "안녕하세요.",
+                            ko_dp_body,
+                            flags=re.IGNORECASE,
+                        )
+
+                        cache[cache_key] = {
+                            "title": "Daily Point Commentary",
+                            "body": ko_dp_body,
+                        }
+                        # Save updated translation cache.
+                        with open(cache_file, "w", encoding="utf-8") as f:
+                            json.dump(cache, f, ensure_ascii=False, indent=2)
+                    else:
+                        raise TranslationError(
+                            "Daily Point translation missing in API response."
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to translate Daily Point: {e}. Falling back to English."
+                    )
+                    ko_dp_body = trans_part
+
+            ko_daily_point = f"{non_trans_part}\n\n{ko_dp_body}"
+            # Shrink content boundaries to prevent duplication during final assembly.
             content = content[:start_dp].rstrip() + "\n\n" + content[end_dp:].lstrip()
         else:
             logger.warning("Could not find next section after Daily Point to delete.")
@@ -929,6 +1005,10 @@ def generate_korean_full_draft(
     # 2. Map Category Headers and replace article blocks
     sections = re.split(r"(?=\n###\s+)", content)
     ko_sections = []
+
+    # Prepend the translated Daily Point block to the top of the Korean report.
+    if ko_daily_point:
+        ko_sections.append(ko_daily_point)
 
     for sec in sections:
         sec_strip = sec.strip()

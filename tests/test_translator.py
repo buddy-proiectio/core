@@ -216,5 +216,74 @@ class TestTranslatorSplitAndRetry(unittest.TestCase):
                 )
 
 
+class TestGenerateKoreanFullDraft(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.en_report = os.path.join(self.test_dir, "en_report.txt")
+        self.ko_draft = os.path.join(self.test_dir, "ko_draft.txt")
+        self.cache_file = os.path.join(self.test_dir, "cache.json")
+
+        # Create a mock English report
+        self.report_content = (
+            "### Daily Point\n"
+            "_ Dow Jones 40,000 (+0.5%)\n"
+            "_ S&P 500 5,000 (+1.0%)\n"
+            "**Topline Signals**\n"
+            "- **Nvidia**: NVIDIA shares rose.\n"
+            "Good day.\n"
+            "IGNORING short term noise.\n\n"
+            "### Weekly Schedule\n"
+            "13 Jul (Monday)\n"
+            "FOMC Bowman Speaks\n"
+        )
+        with open(self.en_report, "w", encoding="utf-8") as f:
+            f.write(self.report_content)
+
+        with open(self.cache_file, "w", encoding="utf-8") as f:
+            json.dump({}, f)
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    @patch("translator.call_gemini_translator_api")
+    def test_generate_korean_full_draft_with_daily_point(self, mock_translate_api):
+        # mock translation response
+        mock_translate_api.return_value = {
+            "daily_point": {
+                "title": "Daily Point",
+                "body": "- **엔비디아**: 엔비디아 주가 상승.\nGood day.\n단기 소음을 무시해야 합니다.",
+            }
+        }
+
+        from translator import generate_korean_full_draft
+
+        success = generate_korean_full_draft(
+            self.en_report, self.ko_draft, self.cache_file
+        )
+        self.assertTrue(success)
+
+        # Verify content of the generated draft
+        with open(self.ko_draft, "r", encoding="utf-8") as f:
+            ko_content = f.read()
+
+        self.assertIn("### Daily Point", ko_content)
+        self.assertIn("_ Dow Jones 40,000 (+0.5%)", ko_content)
+        self.assertIn("**Topline Signals**", ko_content)
+        self.assertIn("- **엔비디아**: 엔비디아 주가 상승.", ko_content)
+        self.assertIn("안녕하세요.", ko_content)
+        self.assertNotIn("Good day.", ko_content)
+        self.assertIn("단기 소음을 무시해야 합니다.", ko_content)
+        self.assertIn("### 주간 일정", ko_content)
+
+        # Verify cache file structure
+        with open(self.cache_file, "r", encoding="utf-8") as f:
+            cache_data = json.load(f)
+        self.assertIn("__daily_point_commentary__", cache_data)
+        self.assertEqual(
+            cache_data["__daily_point_commentary__"]["body"],
+            "- **엔비디아**: 엔비디아 주가 상승.\n안녕하세요.\n단기 소음을 무시해야 합니다.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
