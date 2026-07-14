@@ -25,6 +25,26 @@ def test_trigger_git_push_enabled_success(mock_run, mock_exists):
 
 @patch("os.path.exists")
 @patch("subprocess.run")
+def test_trigger_git_push_data_sub_repository(mock_run, mock_exists):
+    mock_exists.return_value = True
+    mock_run.return_value = MagicMock(returncode=0)
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
+        res = trigger_git_push("data/report/alpha_signal.md", "feat: publish report")
+        assert res is True
+        assert mock_run.call_count >= 3
+
+        add_call_args, add_call_kwargs = mock_run.call_args_list[0]
+        assert "add" in add_call_args[0]
+        assert add_call_args[0][-1] == "report/alpha_signal.md"
+        assert add_call_kwargs["cwd"].endswith("data")
+
+        commit_call_args, commit_call_kwargs = mock_run.call_args_list[1]
+        assert "commit" in commit_call_args[0]
+        assert commit_call_kwargs["cwd"].endswith("data")
+
+
+@patch("os.path.exists")
+@patch("subprocess.run")
 def test_trigger_git_push_case_insensitive_toggle(mock_run, mock_exists):
     mock_exists.return_value = True
     mock_run.return_value = MagicMock(returncode=0)

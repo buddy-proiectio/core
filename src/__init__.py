@@ -47,7 +47,24 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
         return False
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    git_dir = os.path.join(project_root, ".git")
+
+    # Check if the target file is inside the 'data' directory which is a separate repository
+    abs_file_path = os.path.abspath(os.path.join(project_root, file_path))
+    data_dir = os.path.join(project_root, "data")
+
+    if abs_file_path.startswith(os.path.abspath(data_dir)) and os.path.exists(
+        os.path.join(data_dir, ".git")
+    ):
+        git_cwd = data_dir
+        git_file_path = os.path.relpath(abs_file_path, data_dir)
+        git_dir = os.path.join(data_dir, ".git")
+        logger.info(
+            f"Target file is inside sub-repository 'data'. Operating git from 'data' directory (path: {git_file_path})."
+        )
+    else:
+        git_cwd = project_root
+        git_file_path = file_path
+        git_dir = os.path.join(project_root, ".git")
 
     try:
         # Check for git repo existence
@@ -55,9 +72,9 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
             logger.warning(f"Git push skipped: .git directory not found at {git_dir}.")
             return False
 
-        # Run commands relative to project_root to ensure we target the correct repo
+        # Run commands relative to resolved repository root to ensure we target the correct repo
         subprocess.run(
-            ["git", "add", file_path], check=True, capture_output=True, cwd=project_root
+            ["git", "add", git_file_path], check=True, capture_output=True, cwd=git_cwd
         )
 
         try:
@@ -65,7 +82,7 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
                 ["git", "commit", "-m", commit_msg],
                 check=True,
                 capture_output=True,
-                cwd=project_root,
+                cwd=git_cwd,
             )
         except subprocess.CalledProcessError as commit_err:
             stderr_str = commit_err.stderr.decode("utf-8") if commit_err.stderr else ""
@@ -82,9 +99,7 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
             else:
                 raise
 
-        subprocess.run(
-            ["git", "push"], check=True, capture_output=True, cwd=project_root
-        )
+        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=git_cwd)
         logger.info(f"Successfully pushed {file_path} with message: {commit_msg}")
         return True
     except subprocess.CalledProcessError as e:
