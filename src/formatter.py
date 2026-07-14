@@ -460,7 +460,9 @@ def get_korean_weekday(date_str: str) -> str:
     try:
         dt = datetime.strptime(date_str, "%Y%m%d")
     except ValueError:
-        logger.warning(f"Invalid date string for weekday mapping: {date_str}. Falling back to today.")
+        logger.warning(
+            f"Invalid date string for weekday mapping: {date_str}. Falling back to today."
+        )
         dt = datetime.now(timezone(timedelta(hours=9)))
     return weekdays[dt.weekday()]
 
@@ -471,22 +473,24 @@ def inject_frontmatter(content: str, date_str: str, category: str, lang: str) ->
         valid_date_str = date_str
     except ValueError:
         valid_date_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
-        
+
     weekday = get_korean_weekday(valid_date_str)
-    now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%dT%H:%M:%S+09:00")
-    
+    now_str = datetime.now(timezone(timedelta(hours=9))).strftime(
+        "%Y-%m-%dT%H:%M:%S+09:00"
+    )
+
     if category == "alpha_signal":
-        title = f"{valid_date_str[:4]}.{valid_date_str[4:6]}.{valid_date_str[6:8]}. ({weekday}) Alpha Signal"
+        title = f"{valid_date_str[:4]}.{valid_date_str[4:6]}.{valid_date_str[6:8]}.({weekday}) Alpha Signal"
         if lang == "en":
             title += " (EN)"
     elif category == "alpha_signal_premarket":
-        title = f"{valid_date_str[:4]}.{valid_date_str[4:6]}.{valid_date_str[6:8]}. ({weekday}) 장전 뉴스"
+        title = f"{valid_date_str[:4]}.{valid_date_str[4:6]}.{valid_date_str[6:8]}.({weekday}) 장전 뉴스"
         if lang == "en":
             title += " (EN)"
     else:
         title = f"Report {valid_date_str}"
 
-    frontmatter = f"---\ntitle: \"{title}\"\ndate: {now_str}\ncategory: {category}\nlang: {lang}\n---\n"
+    frontmatter = f'---\ntitle: "{title}"\ndate: {now_str}\ncategory: {category}\nlang: {lang}\n---\n'
     return frontmatter + content
 
 
@@ -540,7 +544,7 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
         m = re.search(r"(\d{8})", os.path.basename(output_file))
         if not m:
             m = re.search(r"(\d{8})", os.path.basename(input_file))
-        
+
         if m:
             potential_date = m.group(1)
             try:
@@ -559,7 +563,7 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
                     date_str = potential_date
                 except ValueError:
                     pass
-            
+
             if not date_str:
                 date_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
