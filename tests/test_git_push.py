@@ -1,0 +1,127 @@
+from unittest.mock import patch, MagicMock
+import os
+from src import trigger_git_push, run_all
+
+@patch("subprocess.run")
+def test_trigger_git_push_disabled(mock_run):
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "false"}):
+        res = trigger_git_push("dummy.md", "feat: test commit")
+        assert res is False
+        mock_run.assert_not_called()
+
+@patch("subprocess.run")
+def test_trigger_git_push_enabled_success(mock_run):
+    mock_run.return_value = MagicMock(returncode=0)
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
+        res = trigger_git_push("dummy.md", "feat: test commit")
+        assert res is True
+        assert mock_run.call_count >= 3 # git add, commit, push
+
+@patch("src.is_us_trading_day")
+@patch("src.pull_data_from_cloud")
+@patch("src.run_sorter")
+@patch("src.run_extractor")
+@patch("src.run_cio")
+@patch("src.run_formatter")
+@patch("src.run_translator")
+@patch("src.trigger_git_push")
+@patch("src.os.path.exists")
+@patch("src.os.remove")
+@patch("src.os.makedirs")
+def test_run_all_git_push_integration_full(
+    mock_makedirs,
+    mock_remove,
+    mock_exists,
+    mock_trigger_git_push,
+    mock_translator,
+    mock_formatter,
+    mock_cio,
+    mock_extractor,
+    mock_sorter,
+    mock_pull,
+    mock_is_trading_day,
+):
+    # Setup mocks
+    mock_is_trading_day.return_value = True
+    
+    # We want os.path.exists to return:
+    # False for buddy.lock
+    # True for Korean report file so we trigger the second push
+    def side_effect_exists(path):
+        if "buddy.lock" in path:
+            return False
+        if "alpha_signal" in path and "_ko.md" in path:
+            return True
+        return False
+    mock_exists.side_effect = side_effect_exists
+
+    mock_formatter.return_value = True
+
+    # Run pipeline
+    run_all(report_type="full")
+
+    # Assert trigger_git_push was called twice (once for EN, once for KO)
+    assert mock_trigger_git_push.call_count == 2
+    
+    # Check calls
+    calls = mock_trigger_git_push.call_args_list
+    assert "alpha_signal_" in calls[0][0][0]
+    assert "publish alpha signal (EN)" in calls[0][0][1]
+    assert "alpha_signal_" in calls[1][0][0]
+    assert "_ko.md" in calls[1][0][0]
+    assert "publish alpha signal (KO)" in calls[1][0][1]
+
+
+@patch("src.is_us_trading_day")
+@patch("src.pull_data_from_cloud")
+@patch("src.run_sorter")
+@patch("src.run_extractor")
+@patch("src.run_cio")
+@patch("src.run_formatter")
+@patch("src.run_translator")
+@patch("src.trigger_git_push")
+@patch("src.os.path.exists")
+@patch("src.os.remove")
+@patch("src.os.makedirs")
+def test_run_all_git_push_integration_premarket(
+    mock_makedirs,
+    mock_remove,
+    mock_exists,
+    mock_trigger_git_push,
+    mock_translator,
+    mock_formatter,
+    mock_cio,
+    mock_extractor,
+    mock_sorter,
+    mock_pull,
+    mock_is_trading_day,
+):
+    # Setup mocks
+    mock_is_trading_day.return_value = True
+    
+    # We want os.path.exists to return:
+    # False for buddy.lock
+    # True for Korean report file so we trigger the second push
+    def side_effect_exists(path):
+        if "buddy.lock" in path:
+            return False
+        if "alpha_signal_premarket" in path and "_ko.md" in path:
+            return True
+        return False
+    mock_exists.side_effect = side_effect_exists
+
+    mock_formatter.return_value = True
+
+    # Run pipeline
+    run_all(report_type="premarket")
+
+    # Assert trigger_git_push was called twice (once for EN, once for KO)
+    assert mock_trigger_git_push.call_count == 2
+    
+    # Check calls
+    calls = mock_trigger_git_push.call_args_list
+    assert "alpha_signal_premarket_" in calls[0][0][0]
+    assert "publish premarket signal (EN)" in calls[0][0][1]
+    assert "alpha_signal_premarket_" in calls[1][0][0]
+    assert "_ko.md" in calls[1][0][0]
+    assert "publish premarket signal (KO)" in calls[1][0][1]

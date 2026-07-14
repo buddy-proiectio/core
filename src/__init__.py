@@ -35,6 +35,35 @@ load_env_file()
 logger = setup_logger(logger_name=__name__)
 
 
+def trigger_git_push(file_path: str, commit_msg: str) -> bool:
+    """
+    Automatically commits and pushes the formatted report to the git data repository.
+    Safe exception wrapping ensures network/SSH failures do not interrupt core pipeline.
+    """
+    if os.getenv("ENABLE_GIT_PUSH") != "true":
+        logger.info("Git push skipped: ENABLE_GIT_PUSH is not set to true.")
+        return False
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    git_dir = os.path.join(project_root, ".git")
+
+    try:
+        # Check for git repo existence
+        if not os.path.exists(git_dir):
+            logger.warning(f"Git push skipped: .git directory not found at {git_dir}.")
+            return False
+
+        # Run commands relative to project_root to ensure we target the correct repo
+        subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=project_root)
+        subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True, cwd=project_root)
+        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=project_root)
+        logger.info(f"Successfully pushed {file_path} with message: {commit_msg}")
+        return True
+    except Exception as e:
+        logger.error(f"Git push failed for {file_path}: {e}")
+        return False
+
+
 def is_us_trading_day(dt: datetime | None = None) -> bool:
     """
     Checks if the given datetime corresponds to a US trading day.
@@ -330,9 +359,31 @@ def run_all(report_type: str = "full"):
         success = run_formatter(cio_file, out_file, lang="en")
 
         if success:
+            # Trigger Git push for the English report
+            rel_out_file = os.path.relpath(out_file, project_root)
+            if report_type == "premarket":
+                commit_msg_en = f"feat(data): publish premarket signal (EN) {today_str}"
+            else:
+                commit_msg_en = f"feat(data): publish alpha signal (EN) {today_str}"
+            trigger_git_push(rel_out_file, commit_msg_en)
+
             logger.info("Running Translator for Korean report...")
             try:
                 run_translator(report_type, target_date=today_str)
+                
+                # Check and trigger Git push for the Korean report
+                if report_type == "premarket":
+                    out_file_ko = os.path.join(data_dir, "premarket", f"alpha_signal_premarket_{today_str}_ko.md")
+                    commit_msg_ko = f"feat(data): publish premarket signal (KO) {today_str}"
+                else:
+                    out_file_ko = os.path.join(data_dir, "report", f"alpha_signal_{today_str}_ko.md")
+                    commit_msg_ko = f"feat(data): publish alpha signal (KO) {today_str}"
+                
+                if os.path.exists(out_file_ko):
+                    rel_out_file_ko = os.path.relpath(out_file_ko, project_root)
+                    trigger_git_push(rel_out_file_ko, commit_msg_ko)
+                else:
+                    logger.warning(f"Korean report file not found at {out_file_ko}, skipping Git push.")
             except Exception as e:
                 logger.error(f"Translator failed: {e}")
 
