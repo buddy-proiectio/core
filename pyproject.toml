@@ -1,6 +1,6 @@
 [project]
 name = "core"
-version = "0.3.0"
+version = "0.3.1"
 description = "An automated, multi-agent intelligence system for investment research."
 readme = "README.md"
 requires-python = ">=3.10"
