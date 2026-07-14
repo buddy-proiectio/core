@@ -1,4 +1,3 @@
-import pytest
 import re
 import os
 import yaml
@@ -83,3 +82,32 @@ def test_run_formatter_invalid_date_fallback():
         
         pattern = r"date: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00"
         assert re.search(pattern, yaml_content) is not None
+
+def test_run_formatter_directory_date_protection():
+    # Test that an 8-digit date in the directory path is NOT extracted as the report date
+    with tempfile.TemporaryDirectory() as base_tmp:
+        # Create a subdirectory that contains an 8-digit pattern
+        date_dir = os.path.join(base_tmp, "20201225")
+        os.makedirs(date_dir, exist_ok=True)
+        
+        # Files with a different date, e.g., 20260714
+        input_file = os.path.join(date_dir, "alpha_signal_20260714.md")
+        output_file = os.path.join(date_dir, "formatted_20260714.md")
+        
+        with open(input_file, "w", encoding="utf-8") as f:
+            f.write("## 20260714\nGood day.\nThis is a report.")
+            
+        success = run_formatter(input_file, output_file, lang="en")
+        assert success is True
+        
+        # Verify the date in frontmatter is 20260714, NOT 20201225 from the directory
+        with open(output_file, "r", encoding="utf-8") as f:
+            output_content = f.read()
+            
+        parts = output_content.split("---\n")
+        yaml_content = parts[1]
+        parsed = yaml.safe_load(yaml_content)
+        
+        # It must extract the date from the file name (20260714), not the parent directory (20201225)
+        assert "2026.07.14" in parsed["title"]
+        assert "2020.12.25" not in parsed["title"]

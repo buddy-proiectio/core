@@ -503,7 +503,7 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
         # Try loading weekly schedule JSON
         weekly_schedule_data = None
         date_part = None
-        m = re.search(r"(\d{8})", input_file)
+        m = re.search(r"(\d{8})", os.path.basename(input_file))
         if m:
             date_part = m.group(1)
 
@@ -539,9 +539,9 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
 
         # Extract date_str
         date_str = None
-        m = re.search(r"(\d{8})", output_file)
+        m = re.search(r"(\d{8})", os.path.basename(output_file))
         if not m:
-            m = re.search(r"(\d{8})", input_file)
+            m = re.search(r"(\d{8})", os.path.basename(input_file))
         
         if m:
             potential_date = m.group(1)
