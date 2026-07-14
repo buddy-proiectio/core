@@ -1,5 +1,6 @@
 from unittest.mock import patch, MagicMock
 import os
+import subprocess
 from src import trigger_git_push, run_all
 
 @patch("subprocess.run")
@@ -9,13 +10,62 @@ def test_trigger_git_push_disabled(mock_run):
         assert res is False
         mock_run.assert_not_called()
 
+@patch("os.path.exists")
 @patch("subprocess.run")
-def test_trigger_git_push_enabled_success(mock_run):
+def test_trigger_git_push_enabled_success(mock_run, mock_exists):
+    mock_exists.return_value = True
     mock_run.return_value = MagicMock(returncode=0)
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
         res = trigger_git_push("dummy.md", "feat: test commit")
         assert res is True
         assert mock_run.call_count >= 3 # git add, commit, push
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_trigger_git_push_case_insensitive_toggle(mock_run, mock_exists):
+    mock_exists.return_value = True
+    mock_run.return_value = MagicMock(returncode=0)
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "TrUe"}):
+        res = trigger_git_push("dummy.md", "feat: test commit")
+        assert res is True
+        assert mock_run.call_count >= 3
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+def test_trigger_git_push_nothing_to_commit(mock_run, mock_exists):
+    mock_exists.return_value = True
+    def run_side_effect(args, **kwargs):
+        if "commit" in args:
+            err = subprocess.CalledProcessError(returncode=1, cmd=args)
+            err.stderr = b"nothing to commit, working tree clean"
+            raise err
+        return MagicMock(returncode=0)
+    mock_run.side_effect = run_side_effect
+
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
+        res = trigger_git_push("dummy.md", "feat: test commit")
+        assert res is True
+        assert mock_run.call_count == 3
+
+@patch("os.path.exists")
+@patch("subprocess.run")
+@patch("src.logger")
+def test_trigger_git_push_subprocess_error_logging(mock_logger, mock_run, mock_exists):
+    mock_exists.return_value = True
+    def run_side_effect(args, **kwargs):
+        if "push" in args:
+            err = subprocess.CalledProcessError(returncode=1, cmd=args)
+            err.stderr = b"Permission denied (publickey)."
+            raise err
+        return MagicMock(returncode=0)
+    mock_run.side_effect = run_side_effect
+
+    with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
+        res = trigger_git_push("dummy.md", "feat: test commit")
+        assert res is False
+        mock_logger.error.assert_called_once()
+        log_msg = mock_logger.error.call_args[0][0]
+        assert "Permission denied" in log_msg
 
 @patch("src.is_us_trading_day")
 @patch("src.pull_data_from_cloud")

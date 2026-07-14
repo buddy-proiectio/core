@@ -40,7 +40,8 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
     Automatically commits and pushes the formatted report to the git data repository.
     Safe exception wrapping ensures network/SSH failures do not interrupt core pipeline.
     """
-    if os.getenv("ENABLE_GIT_PUSH") != "true":
+    enable_push = os.getenv("ENABLE_GIT_PUSH", "false")
+    if enable_push.lower() != "true":
         logger.info("Git push skipped: ENABLE_GIT_PUSH is not set to true.")
         return False
 
@@ -55,10 +56,24 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
 
         # Run commands relative to project_root to ensure we target the correct repo
         subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=project_root)
-        subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True, cwd=project_root)
+        
+        try:
+            subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True, cwd=project_root)
+        except subprocess.CalledProcessError as commit_err:
+            stderr_str = commit_err.stderr.decode("utf-8") if commit_err.stderr else ""
+            stdout_str = commit_err.stdout.decode("utf-8") if commit_err.stdout else ""
+            if "nothing to commit" in stderr_str.lower() or "nothing to commit" in stdout_str.lower() or "working tree clean" in stderr_str.lower() or "working tree clean" in stdout_str.lower():
+                logger.info("Git commit skipped: nothing to commit, working tree clean.")
+            else:
+                raise
+
         subprocess.run(["git", "push"], check=True, capture_output=True, cwd=project_root)
         logger.info(f"Successfully pushed {file_path} with message: {commit_msg}")
         return True
+    except subprocess.CalledProcessError as e:
+        stderr_str = e.stderr.decode("utf-8") if e.stderr else ""
+        logger.error(f"Git push failed for {file_path} due to subprocess error: {e}. Stderr: {stderr_str}")
+        return False
     except Exception as e:
         logger.error(f"Git push failed for {file_path}: {e}")
         return False
