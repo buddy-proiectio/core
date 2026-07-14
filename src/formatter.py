@@ -11,7 +11,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import pytz
 from shared.shared_logger import setup_logger
@@ -451,6 +451,31 @@ def format_content(
     return formatted_text
 
 
+def get_korean_weekday(date_str: str) -> str:
+    dt = datetime.strptime(date_str, "%Y%m%d")
+    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+    return weekdays[dt.weekday()]
+
+
+def inject_frontmatter(content: str, date_str: str, category: str, lang: str) -> str:
+    weekday = get_korean_weekday(date_str)
+    now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+    
+    if category == "alpha_signal":
+        title = f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:8]}. ({weekday}) Alpha Signal"
+        if lang == "en":
+            title += " (EN)"
+    elif category == "alpha_signal_premarket":
+        title = f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:8]}. ({weekday}) 장전 뉴스"
+        if lang == "en":
+            title += " (EN)"
+    else:
+        title = f"Report {date_str}"
+
+    frontmatter = f"---\ntitle: {title}\ndate: {now_str}\ncategory: {category}\nlang: {lang}\n---\n"
+    return frontmatter + content
+
+
 def run_formatter(input_file: str, output_file: str, lang: str = "en"):
     """Reads input_file, formats it using format_content, and saves to output_file."""
     logger.info(f"Starting formatting process: {input_file} -> {output_file} ({lang})")
@@ -495,6 +520,29 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
             content = f.read()
 
         formatted = format_content(content, lang, weekly_schedule_data)
+
+        # Extract date_str
+        date_str = None
+        m = re.search(r"(\d{8})", output_file)
+        if not m:
+            m = re.search(r"(\d{8})", input_file)
+        if m:
+            date_str = m.group(1)
+        else:
+            # Fallback to date from content or current KST date
+            m_date = re.search(r"##\s*(\d{8})", content)
+            if m_date:
+                date_str = m_date.group(1)
+            else:
+                date_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+        # Extract category
+        if "premarket" in output_file.lower() or "premarket" in input_file.lower():
+            category = "alpha_signal_premarket"
+        else:
+            category = "alpha_signal"
+
+        formatted = inject_frontmatter(formatted, date_str, category, lang)
 
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(formatted)
