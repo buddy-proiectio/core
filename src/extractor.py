@@ -17,6 +17,10 @@ import uuid
 import warnings
 from datetime import datetime
 import typing
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sentence_transformers import SentenceTransformer
 import pytz
 import requests
@@ -25,10 +29,6 @@ from huggingface_hub.utils.tqdm import disable_progress_bars
 from huggingface_hub.utils import logging as hf_hub_logging
 from prompts import AGENT_CONFIGS, get_agent_config
 from shared.shared_logger import setup_logger
-
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Suppress HuggingFace and Sentence-Transformers warnings/logs completely
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"

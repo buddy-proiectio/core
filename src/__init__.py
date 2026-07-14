@@ -16,6 +16,11 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
+
+# Add project root to sys.path to allow importing from 'shared' and local modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import holidays
 from cio import run_cio
 from extractor import run_extractor
@@ -24,10 +29,6 @@ from shared.env_utils import load_env_file
 from shared.shared_logger import setup_logger
 from sorter import run_sorter
 from translator import run_translator
-
-# Add project root to sys.path to allow importing from 'shared' and local modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Populate os.environ with local config prior to bootstrapping dependencies.
 load_env_file()

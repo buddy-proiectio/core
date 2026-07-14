@@ -14,11 +14,12 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import pytz
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from shared.shared_logger import setup_logger
 from shared.time_utils import parse_utc_time
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 LOG_FILE = "logs/formatter.log"
 

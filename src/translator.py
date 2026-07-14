@@ -18,6 +18,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import pytz
 import requests
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from formatter import run_formatter
 from translation_cleaner import TranslationCleaner
 from shared.env_utils import load_env_file
@@ -29,9 +33,6 @@ class TranslationError(Exception):
 
     pass
 
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Populate os.environ with local config prior to bootstrapping dependencies.
 load_env_file()
