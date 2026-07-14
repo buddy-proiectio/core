@@ -262,6 +262,15 @@ class TestGenerateKoreanFullDraft(unittest.TestCase):
         )
         self.assertTrue(success)
 
+        # Verify arguments passed to call_gemini_translator_api
+        mock_translate_api.assert_called_once()
+        call_kwargs = mock_translate_api.call_args[1]
+        self.assertTrue(call_kwargs.get("preserve_newlines"))
+        self.assertIsNotNone(call_kwargs.get("custom_system_prompt"))
+        self.assertIn(
+            "Chief Investment Officer (CIO)", call_kwargs.get("custom_system_prompt")
+        )
+
         # Verify content of the generated draft
         with open(self.ko_draft, "r", encoding="utf-8") as f:
             ko_content = f.read()

@@ -103,6 +103,10 @@ You MUST output your response strictly as a JSON object containing a "translatio
 # Since config/ is gitignored, this allows local runs to keep proprietary translation IP.
 TRANSLATION_SYSTEM_PROMPT = DEFAULT_TRANSLATION_SYSTEM_PROMPT
 
+DAILY_POINT_TRANSLATION_SYSTEM_PROMPT = """You are a professional financial translator specializing in translating Chief Investment Officer (CIO) market commentaries and topline signals into high-quality, professional Korean.
+You MUST preserve all markdown formatting, including bold text (**text**), bullet points (- ), line breaks, paragraph structure, and HTML breaks (<br />). Do NOT merge paragraphs or remove bullet points.
+You MUST output your response strictly as a JSON object containing a "translations" key mapped to an array of translated articles. Each item in the array must preserve the "url" key and contain the translated "title" and "body" keys."""
+
 try:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     prompt_file_path = os.path.join(
@@ -247,13 +251,14 @@ def pre_process_articles(
 
 
 def post_process_translation(
-    ko_title: str, ko_body: str, rules: dict
+    ko_title: str, ko_body: str, rules: dict, preserve_newlines: bool = False
 ) -> tuple[str, str]:
     """
     Applies post-processing rules (newline cleaning, literal & regex replacements) to Korean titles and bodies.
     """
     # 1. Clean body newlines (Requirement 7)
-    ko_body = clean_body_newlines(ko_body)
+    if not preserve_newlines:
+        ko_body = clean_body_newlines(ko_body)
 
     # 2. Apply literal replacements
     literal_repls = rules.get("literal_replacements", {})
@@ -350,6 +355,8 @@ def call_gemini_translator_api(
     articles: List[Dict[str, str]],
     retries_per_model: int = 1,
     backoff_factor: int = 5,
+    custom_system_prompt: Optional[str] = None,
+    preserve_newlines: bool = False,
     *args,
     **kwargs,
 ) -> Dict[str, Dict[str, str]]:
@@ -385,9 +392,9 @@ def call_gemini_translator_api(
 
     # Detect dynamic guidelines based on the pre-processed articles
     dynamic_guidelines = detect_dynamic_guidelines(processed_articles, rules)
-    batch_system_prompt = TRANSLATION_SYSTEM_PROMPT
-    if dynamic_guidelines:
-        batch_system_prompt = TRANSLATION_SYSTEM_PROMPT + "\n" + dynamic_guidelines
+    batch_system_prompt = custom_system_prompt or TRANSLATION_SYSTEM_PROMPT
+    if dynamic_guidelines and not custom_system_prompt:
+        batch_system_prompt = batch_system_prompt + "\n" + dynamic_guidelines
         logger.info(
             f"Appended dynamic guidelines to translation system prompt:\n{dynamic_guidelines}"
         )
@@ -486,7 +493,10 @@ def call_gemini_translator_api(
 
                         # Apply post-processing (including line breaks removal)
                         ko_title, ko_body = post_process_translation(
-                            raw_title, raw_body, rules
+                            raw_title,
+                            raw_body,
+                            rules,
+                            preserve_newlines=preserve_newlines,
                         )
 
                         mapped_results[original_url] = {
@@ -968,7 +978,11 @@ def generate_korean_full_draft(
                             "body": trans_part,
                         }
                     ]
-                    translations = call_gemini_translator_api(dp_article)
+                    translations = call_gemini_translator_api(
+                        dp_article,
+                        custom_system_prompt=DAILY_POINT_TRANSLATION_SYSTEM_PROMPT,
+                        preserve_newlines=True,
+                    )
 
                     if "daily_point" in translations:
                         ko_dp_body = translations["daily_point"]["body"]
