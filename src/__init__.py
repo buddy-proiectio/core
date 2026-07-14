@@ -99,7 +99,37 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
             else:
                 raise
 
-        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=git_cwd)
+        # Determine the current branch name
+        branch_res = subprocess.run(
+            ["git", "branch", "--show-current"],
+            check=True,
+            capture_output=True,
+            cwd=git_cwd,
+            text=True,
+        )
+        current_branch = branch_res.stdout.strip()
+        if not current_branch:
+            current_branch = "main"
+
+        # Pull before pushing to avoid conflicts with remote changes (like signals.json)
+        logger.info(
+            f"Pulling remote changes on branch '{current_branch}' with rebase..."
+        )
+        subprocess.run(
+            ["git", "pull", "--rebase", "origin", current_branch],
+            check=True,
+            capture_output=True,
+            cwd=git_cwd,
+        )
+
+        # Push to origin specifying the branch to handle missing tracking configuration
+        logger.info(f"Pushing committed changes to origin '{current_branch}'...")
+        subprocess.run(
+            ["git", "push", "origin", current_branch],
+            check=True,
+            capture_output=True,
+            cwd=git_cwd,
+        )
         logger.info(f"Successfully pushed {file_path} with message: {commit_msg}")
         return True
     except subprocess.CalledProcessError as e:
@@ -482,16 +512,24 @@ def _cleanup_data_files(data_dir: str):
     for file_path in all_files:
         if os.path.isfile(file_path):
             filename = os.path.basename(file_path)
-            # Keep the final alpha signal reports and key premarket state cache files
-            if not (
-                (filename.startswith("alpha_signal_") and filename.endswith(".md"))
-                or filename in ("extracted_state_pre.json", "translated_state_pre.json")
-            ):
-                try:
-                    os.remove(file_path)
-                    logger.debug(f"Deleted {filename}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {filename}: {e}")
+            # Keep configuration files, source scripts, state files, and hidden files
+            if filename in (
+                "generate_index.py",
+                "signals.json",
+                "extracted_state_pre.json",
+                "translated_state_pre.json",
+            ) or filename.startswith("."):
+                continue
+
+            # Keep the final alpha signal reports
+            if filename.startswith("alpha_signal_") and filename.endswith(".md"):
+                continue
+
+            try:
+                os.remove(file_path)
+                logger.debug(f"Deleted {filename}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {filename}: {e}")
 
 
 if __name__ == "__main__":
