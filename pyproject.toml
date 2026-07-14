@@ -19,6 +19,7 @@ dependencies = [
     "trafilatura",
     "types-pytz",
     "types-requests",
+    "types-pyyaml",
 ]
 
 [tool.uv]
@@ -29,4 +30,3 @@ dev = [
     "pyrefly",
     "ruff",
 ]
-

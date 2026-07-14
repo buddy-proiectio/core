@@ -3,12 +3,14 @@ import os
 import subprocess
 from src import trigger_git_push, run_all
 
+
 @patch("subprocess.run")
 def test_trigger_git_push_disabled(mock_run):
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "false"}):
         res = trigger_git_push("dummy.md", "feat: test commit")
         assert res is False
         mock_run.assert_not_called()
+
 
 @patch("os.path.exists")
 @patch("subprocess.run")
@@ -18,7 +20,8 @@ def test_trigger_git_push_enabled_success(mock_run, mock_exists):
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
         res = trigger_git_push("dummy.md", "feat: test commit")
         assert res is True
-        assert mock_run.call_count >= 3 # git add, commit, push
+        assert mock_run.call_count >= 3  # git add, commit, push
+
 
 @patch("os.path.exists")
 @patch("subprocess.run")
@@ -30,16 +33,19 @@ def test_trigger_git_push_case_insensitive_toggle(mock_run, mock_exists):
         assert res is True
         assert mock_run.call_count >= 3
 
+
 @patch("os.path.exists")
 @patch("subprocess.run")
 def test_trigger_git_push_nothing_to_commit(mock_run, mock_exists):
     mock_exists.return_value = True
+
     def run_side_effect(args, **kwargs):
         if "commit" in args:
             err = subprocess.CalledProcessError(returncode=1, cmd=args)
             err.stderr = b"nothing to commit, working tree clean"
             raise err
         return MagicMock(returncode=0)
+
     mock_run.side_effect = run_side_effect
 
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
@@ -47,17 +53,20 @@ def test_trigger_git_push_nothing_to_commit(mock_run, mock_exists):
         assert res is True
         assert mock_run.call_count == 3
 
+
 @patch("os.path.exists")
 @patch("subprocess.run")
 @patch("src.logger")
 def test_trigger_git_push_subprocess_error_logging(mock_logger, mock_run, mock_exists):
     mock_exists.return_value = True
+
     def run_side_effect(args, **kwargs):
         if "push" in args:
             err = subprocess.CalledProcessError(returncode=1, cmd=args)
             err.stderr = b"Permission denied (publickey)."
             raise err
         return MagicMock(returncode=0)
+
     mock_run.side_effect = run_side_effect
 
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
@@ -66,6 +75,7 @@ def test_trigger_git_push_subprocess_error_logging(mock_logger, mock_run, mock_e
         mock_logger.error.assert_called_once()
         log_msg = mock_logger.error.call_args[0][0]
         assert "Permission denied" in log_msg
+
 
 @patch("src.is_us_trading_day")
 @patch("src.pull_data_from_cloud")
@@ -93,7 +103,7 @@ def test_run_all_git_push_integration_full(
 ):
     # Setup mocks
     mock_is_trading_day.return_value = True
-    
+
     # We want os.path.exists to return:
     # False for buddy.lock
     # True for Korean report file so we trigger the second push
@@ -103,6 +113,7 @@ def test_run_all_git_push_integration_full(
         if "alpha_signal" in path and "_ko.md" in path:
             return True
         return False
+
     mock_exists.side_effect = side_effect_exists
 
     mock_formatter.return_value = True
@@ -112,7 +123,7 @@ def test_run_all_git_push_integration_full(
 
     # Assert trigger_git_push was called twice (once for EN, once for KO)
     assert mock_trigger_git_push.call_count == 2
-    
+
     # Check calls
     calls = mock_trigger_git_push.call_args_list
     assert "alpha_signal_" in calls[0][0][0]
@@ -148,7 +159,7 @@ def test_run_all_git_push_integration_premarket(
 ):
     # Setup mocks
     mock_is_trading_day.return_value = True
-    
+
     # We want os.path.exists to return:
     # False for buddy.lock
     # True for Korean report file so we trigger the second push
@@ -158,6 +169,7 @@ def test_run_all_git_push_integration_premarket(
         if "alpha_signal_premarket" in path and "_ko.md" in path:
             return True
         return False
+
     mock_exists.side_effect = side_effect_exists
 
     mock_formatter.return_value = True
@@ -167,7 +179,7 @@ def test_run_all_git_push_integration_premarket(
 
     # Assert trigger_git_push was called twice (once for EN, once for KO)
     assert mock_trigger_git_push.call_count == 2
-    
+
     # Check calls
     calls = mock_trigger_git_push.call_args_list
     assert "alpha_signal_premarket_" in calls[0][0][0]

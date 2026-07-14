@@ -55,24 +55,42 @@ def trigger_git_push(file_path: str, commit_msg: str) -> bool:
             return False
 
         # Run commands relative to project_root to ensure we target the correct repo
-        subprocess.run(["git", "add", file_path], check=True, capture_output=True, cwd=project_root)
-        
+        subprocess.run(
+            ["git", "add", file_path], check=True, capture_output=True, cwd=project_root
+        )
+
         try:
-            subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True, cwd=project_root)
+            subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                check=True,
+                capture_output=True,
+                cwd=project_root,
+            )
         except subprocess.CalledProcessError as commit_err:
             stderr_str = commit_err.stderr.decode("utf-8") if commit_err.stderr else ""
             stdout_str = commit_err.stdout.decode("utf-8") if commit_err.stdout else ""
-            if "nothing to commit" in stderr_str.lower() or "nothing to commit" in stdout_str.lower() or "working tree clean" in stderr_str.lower() or "working tree clean" in stdout_str.lower():
-                logger.info("Git commit skipped: nothing to commit, working tree clean.")
+            if (
+                "nothing to commit" in stderr_str.lower()
+                or "nothing to commit" in stdout_str.lower()
+                or "working tree clean" in stderr_str.lower()
+                or "working tree clean" in stdout_str.lower()
+            ):
+                logger.info(
+                    "Git commit skipped: nothing to commit, working tree clean."
+                )
             else:
                 raise
 
-        subprocess.run(["git", "push"], check=True, capture_output=True, cwd=project_root)
+        subprocess.run(
+            ["git", "push"], check=True, capture_output=True, cwd=project_root
+        )
         logger.info(f"Successfully pushed {file_path} with message: {commit_msg}")
         return True
     except subprocess.CalledProcessError as e:
         stderr_str = e.stderr.decode("utf-8") if e.stderr else ""
-        logger.error(f"Git push failed for {file_path} due to subprocess error: {e}. Stderr: {stderr_str}")
+        logger.error(
+            f"Git push failed for {file_path} due to subprocess error: {e}. Stderr: {stderr_str}"
+        )
         return False
     except Exception as e:
         logger.error(f"Git push failed for {file_path}: {e}")
@@ -385,20 +403,30 @@ def run_all(report_type: str = "full"):
             logger.info("Running Translator for Korean report...")
             try:
                 run_translator(report_type, target_date=today_str)
-                
+
                 # Check and trigger Git push for the Korean report
                 if report_type == "premarket":
-                    out_file_ko = os.path.join(data_dir, "premarket", f"alpha_signal_premarket_{today_str}_ko.md")
-                    commit_msg_ko = f"feat(data): publish premarket signal (KO) {today_str}"
+                    out_file_ko = os.path.join(
+                        data_dir,
+                        "premarket",
+                        f"alpha_signal_premarket_{today_str}_ko.md",
+                    )
+                    commit_msg_ko = (
+                        f"feat(data): publish premarket signal (KO) {today_str}"
+                    )
                 else:
-                    out_file_ko = os.path.join(data_dir, "report", f"alpha_signal_{today_str}_ko.md")
+                    out_file_ko = os.path.join(
+                        data_dir, "report", f"alpha_signal_{today_str}_ko.md"
+                    )
                     commit_msg_ko = f"feat(data): publish alpha signal (KO) {today_str}"
-                
+
                 if os.path.exists(out_file_ko):
                     rel_out_file_ko = os.path.relpath(out_file_ko, project_root)
                     trigger_git_push(rel_out_file_ko, commit_msg_ko)
                 else:
-                    logger.warning(f"Korean report file not found at {out_file_ko}, skipping Git push.")
+                    logger.warning(
+                        f"Korean report file not found at {out_file_ko}, skipping Git push."
+                    )
             except Exception as e:
                 logger.error(f"Translator failed: {e}")
 
