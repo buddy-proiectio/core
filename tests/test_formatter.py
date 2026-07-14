@@ -20,7 +20,7 @@ def test_get_korean_weekday_invalid_fallback():
 def test_inject_frontmatter_ko_alpha():
     content = "## Hello World"
     result = inject_frontmatter(content, "20260714", "alpha_signal", "ko")
-    assert 'title: "2026.07.14. (화) Alpha Signal"' in result
+    assert 'title: "2026.07.14.(화) Alpha Signal"' in result
     assert "category: alpha_signal" in result
     assert "lang: ko" in result
     assert result.endswith(content)
@@ -38,7 +38,7 @@ def test_inject_frontmatter_timezone_and_yaml():
 
     # Verify valid YAML parsing
     parsed = yaml.safe_load(yaml_content)
-    assert parsed["title"] == "2026.07.14. (화) Alpha Signal"
+    assert parsed["title"] == "2026.07.14.(화) Alpha Signal"
     assert parsed["category"] == "alpha_signal"
     assert parsed["lang"] == "ko"
 

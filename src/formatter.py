@@ -352,31 +352,14 @@ def format_content(
         )
         stripped = line.strip()
 
-        # 1.1) Header formatting: ## YYYYMMDD
-        m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})$", stripped)
+        # 1.1) Remove date header line: ## YYYYMMDD (frontmatter handles date/title)
+        # Also handles ## YYYYMMDD Premarket and similar suffixed variants
+        m_report = re.match(r"^##\s+(\d{4})(\d{2})(\d{2})\b", stripped)
         if m_report:
             year, month, day = m_report.groups()
             try:
                 datetime.strptime(f"{year}{month}{day}", "%Y%m%d")
-                if lang == "en":
-                    months_en = [
-                        "Jan",
-                        "Feb",
-                        "Mar",
-                        "Apr",
-                        "May",
-                        "Jun",
-                        "Jul",
-                        "Aug",
-                        "Sep",
-                        "Oct",
-                        "Nov",
-                        "Dec",
-                    ]
-                    month_name = months_en[int(month) - 1]
-                    line = f"## {int(day)} {month_name} {year} Alpha Signal"
-                else:
-                    line = f"## {year}년 {int(month)}월 {int(day)}일 Alpha Signal"
+                continue  # Skip this line; date/title is in frontmatter
             except ValueError:
                 pass
 

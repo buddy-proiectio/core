@@ -164,7 +164,7 @@ graph TD
 - **Timezone Midnight Bug Fix:** Corrects midnight UTC timezone shifts by matching 00:00:00 events to the correct target calendar date relative to the New York timezone (`America/New_York`).
 - **Smart Markdown Line Breaks:** Automatically injects `<br />` breaks for list-items and schedule entries if the next line is not empty, a header, or a divider, ensuring beautiful rendering.
 - **Structural & Aesthetics Adjustments:**
-  - Standardizes date headers (e.g., `## {day} {month} {year} Alpha Signal`).
+  - Removes date headers (`## YYYYMMDD`) from the body (date/title is handled by frontmatter).
   - Removes `---` separators directly below `Topline Signals` inside `Daily Point` blocks.
   - Escapes raw dollar symbols (`$`) as `\$` to prevent PDF/LaTeX markdown parser equations rendering errors.
   - Removes standalone metadata tags like `**Daily Point**` to clean up the final output.
