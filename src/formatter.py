@@ -456,15 +456,13 @@ def format_content(
 
 
 def get_korean_weekday(date_str: str) -> str:
+    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
     try:
         dt = datetime.strptime(date_str, "%Y%m%d")
-        weekdays = ["월", "화", "수", "목", "금", "토", "일"]
-        return weekdays[dt.weekday()]
     except ValueError:
         logger.warning(f"Invalid date string for weekday mapping: {date_str}. Falling back to today.")
         dt = datetime.now(timezone(timedelta(hours=9)))
-        weekdays = ["월", "화", "수", "목", "금", "토", "일"]
-        return weekdays[dt.weekday()]
+    return weekdays[dt.weekday()]
 
 
 def inject_frontmatter(content: str, date_str: str, category: str, lang: str) -> str:
