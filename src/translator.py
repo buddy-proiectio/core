@@ -1252,7 +1252,9 @@ def run_translator(
                 try:
                     on_ko_report_ready(ko_final_report)
                 except Exception as cb_err:
-                    logger.error(f"Failed to execute on_ko_report_ready callback: {cb_err}")
+                    logger.error(
+                        f"Failed to execute on_ko_report_ready callback: {cb_err}"
+                    )
 
             # 2. Translate all remaining articles from delta pre state
             logger.info(
@@ -1311,7 +1313,9 @@ def run_translator(
                 try:
                     on_ko_report_ready(ko_final_report)
                 except Exception as cb_err:
-                    logger.error(f"Failed to execute on_ko_report_ready callback: {cb_err}")
+                    logger.error(
+                        f"Failed to execute on_ko_report_ready callback: {cb_err}"
+                    )
 
     finally:
         # Remove translation.lock
