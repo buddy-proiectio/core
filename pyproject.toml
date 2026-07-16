@@ -28,5 +28,6 @@ package = false
 [dependency-groups]
 dev = [
     "pyrefly",
+    "pytest>=9.1.1",
     "ruff",
 ]

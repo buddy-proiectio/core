@@ -32,3 +32,8 @@ jobs:
 
       - name: Run Pyrefly Type Check
         run: uv run pyrefly check
+
+      - name: Run Tests
+        run: uv run pytest tests/
+        env:
+          PYTHONPATH: .
