@@ -448,31 +448,49 @@ def run_all(report_type: str = "full"):
 
             logger.info("Running Translator for Korean report...")
             try:
-                run_translator(report_type, target_date=today_str)
+                ko_pushed = False
 
-                # Check and trigger Git push for the Korean report
-                if report_type == "premarket":
-                    out_file_ko = os.path.join(
-                        data_dir,
-                        "premarket",
-                        f"alpha_signal_premarket_{today_str}_ko.md",
-                    )
-                    commit_msg_ko = (
-                        f"feat(data): publish premarket signal (KO) {today_str}"
-                    )
-                else:
-                    out_file_ko = os.path.join(
-                        data_dir, "report", f"alpha_signal_{today_str}_ko.md"
-                    )
-                    commit_msg_ko = f"feat(data): publish alpha signal (KO) {today_str}"
+                def on_ko_ready(ko_file_path: str):
+                    nonlocal ko_pushed
+                    if os.path.exists(ko_file_path):
+                        rel_out_file_ko = os.path.relpath(ko_file_path, project_root)
+                        if report_type == "premarket":
+                            commit_msg_ko = f"feat(data): publish premarket signal (KO) {today_str}"
+                        else:
+                            commit_msg_ko = f"feat(data): publish alpha signal (KO) {today_str}"
+                        trigger_git_push(rel_out_file_ko, commit_msg_ko)
+                        ko_pushed = True
+                    else:
+                        logger.warning(
+                            f"Korean report file not found at {ko_file_path}, skipping immediate Git push."
+                        )
 
-                if os.path.exists(out_file_ko):
-                    rel_out_file_ko = os.path.relpath(out_file_ko, project_root)
-                    trigger_git_push(rel_out_file_ko, commit_msg_ko)
-                else:
-                    logger.warning(
-                        f"Korean report file not found at {out_file_ko}, skipping Git push."
-                    )
+                run_translator(report_type, target_date=today_str, on_ko_report_ready=on_ko_ready)
+
+                # Fallback push check if callback wasn't executed
+                if not ko_pushed:
+                    if report_type == "premarket":
+                        out_file_ko = os.path.join(
+                            data_dir,
+                            "premarket",
+                            f"alpha_signal_premarket_{today_str}_ko.md",
+                        )
+                        commit_msg_ko = (
+                            f"feat(data): publish premarket signal (KO) {today_str}"
+                        )
+                    else:
+                        out_file_ko = os.path.join(
+                            data_dir, "report", f"alpha_signal_{today_str}_ko.md"
+                        )
+                        commit_msg_ko = f"feat(data): publish alpha signal (KO) {today_str}"
+
+                    if os.path.exists(out_file_ko):
+                        rel_out_file_ko = os.path.relpath(out_file_ko, project_root)
+                        trigger_git_push(rel_out_file_ko, commit_msg_ko)
+                    else:
+                        logger.warning(
+                            f"Korean report file not found at {out_file_ko}, skipping Git push."
+                        )
             except Exception as e:
                 logger.error(f"Translator failed: {e}")
 

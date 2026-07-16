@@ -15,7 +15,7 @@ import signal
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 import pytz
 import requests
 
@@ -1125,7 +1125,9 @@ def _acquire_preemption_lock(lock_file: str) -> None:
 
 
 def run_translator(
-    report_type: str = "full", target_date: Optional[str] = None
+    report_type: str = "full",
+    target_date: Optional[str] = None,
+    on_ko_report_ready: Optional[Callable[[str], None]] = None,
 ) -> None:
     """
     Main entry point for translation pipeline.
@@ -1245,6 +1247,13 @@ def run_translator(
                 f"Successfully generated final Korean premarket report at {ko_final_report}"
             )
 
+            # Trigger immediate push callback if provided
+            if on_ko_report_ready:
+                try:
+                    on_ko_report_ready(ko_final_report)
+                except Exception as cb_err:
+                    logger.error(f"Failed to execute on_ko_report_ready callback: {cb_err}")
+
             # 2. Translate all remaining articles from delta pre state
             logger.info(
                 "Proceeding to translate all remaining articles in premarket state..."
@@ -1296,6 +1305,13 @@ def run_translator(
             logger.info(
                 f"Successfully generated final Korean full report at {ko_final_report}"
             )
+
+            # Trigger immediate push callback if provided
+            if on_ko_report_ready:
+                try:
+                    on_ko_report_ready(ko_final_report)
+                except Exception as cb_err:
+                    logger.error(f"Failed to execute on_ko_report_ready callback: {cb_err}")
 
     finally:
         # Remove translation.lock
