@@ -71,7 +71,7 @@ def test_trigger_git_push_nothing_to_commit(mock_run, mock_exists):
     with patch.dict(os.environ, {"ENABLE_GIT_PUSH": "true"}):
         res = trigger_git_push("dummy.md", "feat: test commit")
         assert res is True
-        assert mock_run.call_count == 3
+        assert mock_run.call_count == 5
 
 
 @patch("os.path.exists")
