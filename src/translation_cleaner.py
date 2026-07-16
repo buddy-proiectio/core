@@ -101,4 +101,7 @@ class TranslationCleaner:
         # Remove duplicates
         text = cls.remove_duplicates(text)
 
+        # Normalize HTML line breaks
+        text = re.sub(r"<\s*br\s*/?\s*>", "<br />", text, flags=re.IGNORECASE)
+
         return text

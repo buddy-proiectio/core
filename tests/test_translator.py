@@ -294,5 +294,25 @@ class TestGenerateKoreanFullDraft(unittest.TestCase):
         )
 
 
+class TestTranslationCleaner(unittest.TestCase):
+    def test_normalize_br_tags(self):
+        from translation_cleaner import TranslationCleaner
+
+        # Test cases for various br tags
+        cases = [
+            ("안녕하세요.<br/ >반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.<br / >반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.<br>반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.<br/>반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.< br />반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.< br/>반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.<BR>반갑습니다.", "안녕하세요.<br />반갑습니다."),
+            ("안녕하세요.<BR />반갑습니다.", "안녕하세요.<br />반갑습니다."),
+        ]
+        for input_text, expected in cases:
+            with self.subTest(input_text=input_text):
+                self.assertEqual(TranslationCleaner.clean(input_text), expected)
+
+
 if __name__ == "__main__":
     unittest.main()
