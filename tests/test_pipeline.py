@@ -114,9 +114,7 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
     """Verify that pull_data_from_cloud uses target_date for file path construction."""
 
     @patch("src.subprocess.run")
-    def test_pull_data_uses_target_date_for_incremental(
-        self, mock_subprocess_run
-    ):
+    def test_pull_data_uses_target_date_for_incremental(self, mock_subprocess_run):
         """When target_date is provided (weekend scenario), SCP should target that date's file."""
         from src import pull_data_from_cloud
 
@@ -150,9 +148,7 @@ class TestPullDataFromCloudPaths(unittest.TestCase):
                 os.remove(test_file)
 
     @patch("src.subprocess.run")
-    def test_pull_data_uses_target_date_for_premarket(
-        self, mock_subprocess_run
-    ):
+    def test_pull_data_uses_target_date_for_premarket(self, mock_subprocess_run):
         """Premarket pulls should also use target_date for the file name."""
         from src import pull_data_from_cloud
 
