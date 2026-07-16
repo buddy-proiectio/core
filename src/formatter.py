@@ -474,7 +474,7 @@ def inject_frontmatter(content: str, date_str: str, category: str, lang: str) ->
     else:
         title = f"Report {valid_date_str}"
 
-    frontmatter = f'---\ntitle: "{title}"\ndate: {now_str}\ncategory: {category}\nlang: {lang}\n---\n'
+    frontmatter = f"---\ntitle: {title}\ndate: {now_str}\ncategory: {category}\nlang: {lang}\n---\n"
     return frontmatter + content
 
 
