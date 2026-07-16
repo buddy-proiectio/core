@@ -970,12 +970,21 @@ def generate_korean_full_draft(
                         "Daily Point translation cache missing. Requesting LLM translation..."
                     )
 
+                    # Pre-process: replace 'Good day' / 'Good day.' with a translation-safe placeholder
+                    # to guarantee 1:1 mapping and prevent LLM from translating it to '안녕하십니까'.
+                    trans_part_placeholder = re.sub(
+                        r"\bGood\s+day\.?",
+                        "__GOOD_DAY_GREETING__",
+                        trans_part,
+                        flags=re.IGNORECASE,
+                    )
+
                     # Construct input payload for the existing translation API (avoids code duplication).
                     dp_article = [
                         {
                             "url": "daily_point",
                             "title": "Daily Point",
-                            "body": trans_part,
+                            "body": trans_part_placeholder,
                         }
                     ]
                     translations = call_gemini_translator_api(
@@ -986,12 +995,20 @@ def generate_korean_full_draft(
 
                     if "daily_point" in translations:
                         ko_dp_body = translations["daily_point"]["body"]
-                        # Post-process: replacement of 'Good day' / 'Good day.' with '안녕하세요.' (guarantees 1:1 mapping).
+                        # Post-process: replacement of placeholder and 'Good day' / 'Good day.' / '안녕하십니까' with '안녕하세요.'
+                        ko_dp_body = ko_dp_body.replace(
+                            "__GOOD_DAY_GREETING__", "안녕하세요."
+                        )
                         ko_dp_body = re.sub(
                             r"\bGood\s+day\.?",
                             "안녕하세요.",
                             ko_dp_body,
                             flags=re.IGNORECASE,
+                        )
+                        ko_dp_body = re.sub(
+                            r"(안녕하십니까|좋은\s*하루\s*되세요|좋은\s*하루입니다)\.?",
+                            "안녕하세요.",
+                            ko_dp_body,
                         )
 
                         cache[cache_key] = {
