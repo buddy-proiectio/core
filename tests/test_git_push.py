@@ -1,7 +1,17 @@
 from unittest.mock import patch, MagicMock
 import os
 import subprocess
+from datetime import datetime
+import pytz
 from src import trigger_git_push, run_all
+
+
+class MockDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):  # type: ignore
+        ny_tz = pytz.timezone("America/New_York")
+        dt = datetime(2026, 7, 17, 9, 0, 0)
+        return ny_tz.localize(dt).astimezone(tz) if tz else ny_tz.localize(dt)
 
 
 @patch("subprocess.run")
@@ -108,6 +118,7 @@ def test_trigger_git_push_subprocess_error_logging(mock_logger, mock_run, mock_e
 @patch("src.os.path.exists")
 @patch("src.os.remove")
 @patch("src.os.makedirs")
+@patch("src.datetime", MockDatetime)
 def test_run_all_git_push_integration_full(
     mock_makedirs,
     mock_remove,
@@ -164,6 +175,7 @@ def test_run_all_git_push_integration_full(
 @patch("src.os.path.exists")
 @patch("src.os.remove")
 @patch("src.os.makedirs")
+@patch("src.datetime", MockDatetime)
 def test_run_all_git_push_integration_premarket(
     mock_makedirs,
     mock_remove,
