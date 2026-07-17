@@ -970,58 +970,87 @@ def generate_korean_full_draft(
                         "Daily Point translation cache missing. Requesting LLM translation..."
                     )
 
-                    # Pre-process: replace 'Good day' / 'Good day.' with a translation-safe placeholder
-                    # to guarantee 1:1 mapping and prevent LLM from translating it to '안녕하십니까'.
-                    trans_part_placeholder = re.sub(
-                        r"\bGood\s+day\.?",
-                        "__GOOD_DAY_GREETING__",
+                    # Pre-process: split trans_part by 'Good day' / 'Good day.' to avoid LLM placeholder issues
+                    # and guarantee precise positioning of '안녕하세요.'.
+                    parts = re.split(
+                        r"\bGood\s+day\.?\s*\n*",
                         trans_part,
+                        maxsplit=1,
                         flags=re.IGNORECASE,
                     )
+                    if len(parts) == 2:
+                        dp_articles = [
+                            {
+                                "url": "daily_point_signals",
+                                "title": "Daily Point Signals",
+                                "body": parts[0].strip(),
+                            },
+                            {
+                                "url": "daily_point_commentary",
+                                "title": "Daily Point Commentary",
+                                "body": parts[1].strip(),
+                            },
+                        ]
+                    else:
+                        dp_articles = [
+                            {
+                                "url": "daily_point",
+                                "title": "Daily Point",
+                                "body": trans_part.strip(),
+                            }
+                        ]
 
-                    # Construct input payload for the existing translation API (avoids code duplication).
-                    dp_article = [
-                        {
-                            "url": "daily_point",
-                            "title": "Daily Point",
-                            "body": trans_part_placeholder,
-                        }
-                    ]
                     translations = call_gemini_translator_api(
-                        dp_article,
+                        dp_articles,
                         custom_system_prompt=DAILY_POINT_TRANSLATION_SYSTEM_PROMPT,
                         preserve_newlines=True,
                     )
 
-                    if "daily_point" in translations:
-                        ko_dp_body = translations["daily_point"]["body"]
-                        # Post-process: replacement of placeholder and 'Good day' / 'Good day.' / '안녕하십니까' with '안녕하세요.'
-                        ko_dp_body = ko_dp_body.replace(
-                            "__GOOD_DAY_GREETING__", "안녕하세요."
-                        )
-                        ko_dp_body = re.sub(
-                            r"\bGood\s+day\.?",
-                            "안녕하세요.",
-                            ko_dp_body,
-                            flags=re.IGNORECASE,
-                        )
-                        ko_dp_body = re.sub(
-                            r"(안녕하십니까|좋은\s*하루\s*되세요|좋은\s*하루입니다)\.?",
-                            "안녕하세요.",
-                            ko_dp_body,
-                        )
-
-                        cache[cache_key] = {
-                            "title": "Daily Point Commentary",
-                            "body": ko_dp_body,
-                        }
-                        # Save updated translation cache.
-                        with open(cache_file, "w", encoding="utf-8") as f:
-                            json.dump(cache, f, ensure_ascii=False, indent=2)
+                    if len(parts) == 2:
+                        if (
+                            "daily_point_signals" in translations
+                            and "daily_point_commentary" in translations
+                        ):
+                            ko_signals = translations["daily_point_signals"][
+                                "body"
+                            ].strip()
+                            ko_commentary = translations["daily_point_commentary"][
+                                "body"
+                            ].strip()
+                            ko_dp_body = (
+                                f"{ko_signals}\n\n안녕하세요.\n\n{ko_commentary}"
+                            )
+                        else:
+                            raise TranslationError(
+                                "Daily Point split translation missing in API response."
+                            )
                     else:
-                        raise TranslationError(
-                            "Daily Point translation missing in API response."
-                        )
+                        if "daily_point" in translations:
+                            ko_dp_body = translations["daily_point"]["body"].strip()
+                            # Fallback replacement if 'Good day' is somehow still inside body
+                            ko_dp_body = re.sub(
+                                r"\bGood\s+day\.?\s*\n*",
+                                "안녕하세요.\n\n",
+                                ko_dp_body,
+                                flags=re.IGNORECASE,
+                            )
+                            ko_dp_body = re.sub(
+                                r"(안녕하십니까|좋은\s*하루\s*되세요|좋은\s*하루입니다)\.?\s*\n*",
+                                "안녕하세요.\n\n",
+                                ko_dp_body,
+                            )
+                        else:
+                            raise TranslationError(
+                                "Daily Point translation missing in API response."
+                            )
+
+                    cache[cache_key] = {
+                        "title": "Daily Point Commentary",
+                        "body": ko_dp_body,
+                    }
+                    # Save updated translation cache.
+                    with open(cache_file, "w", encoding="utf-8") as f:
+                        json.dump(cache, f, ensure_ascii=False, indent=2)
                 except Exception as e:
                     logger.error(
                         f"Failed to translate Daily Point: {e}. Falling back to English."

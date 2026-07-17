@@ -249,10 +249,14 @@ class TestGenerateKoreanFullDraft(unittest.TestCase):
     def test_generate_korean_full_draft_with_daily_point(self, mock_translate_api):
         # mock translation response
         mock_translate_api.return_value = {
-            "daily_point": {
-                "title": "Daily Point",
-                "body": "- **엔비디아**: 엔비디아 주가 상승.\nGood day.\n단기 소음을 무시해야 합니다.",
-            }
+            "daily_point_signals": {
+                "title": "Daily Point Signals",
+                "body": "- **엔비디아**: 엔비디아 주가 상승.",
+            },
+            "daily_point_commentary": {
+                "title": "Daily Point Commentary",
+                "body": "단기 소음을 무시해야 합니다.",
+            },
         }
 
         from translator import generate_korean_full_draft
@@ -290,7 +294,7 @@ class TestGenerateKoreanFullDraft(unittest.TestCase):
         self.assertIn("__daily_point_commentary__", cache_data)
         self.assertEqual(
             cache_data["__daily_point_commentary__"]["body"],
-            "- **엔비디아**: 엔비디아 주가 상승.\n안녕하세요.\n단기 소음을 무시해야 합니다.",
+            "- **엔비디아**: 엔비디아 주가 상승.\n\n안녕하세요.\n\n단기 소음을 무시해야 합니다.",
         )
 
 
