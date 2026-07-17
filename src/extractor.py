@@ -491,7 +491,13 @@ def run_extractor(
     logger.info(
         "Loading embedding model for semantic deduplication (all-MiniLM-L6-v2)..."
     )
-    embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    try:
+        embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as e:
+        logger.warning(
+            f"Failed to load embedding model online ({e}). Retrying in offline mode using local_files_only=True..."
+        )
+        embedder = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
 
     active_tasks = []
 
