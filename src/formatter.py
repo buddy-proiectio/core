@@ -126,7 +126,7 @@ def build_english_weekly_schedule(
     for d in target_dates:
         weekday_en = WEEKDAYS_EN[d.weekday()]
         month_en = MONTHS_EN[d.month - 1]
-        header = f"<b>{d.day} {month_en} ({weekday_en})</b>"
+        header = f"**{d.day} {month_en} ({weekday_en})**"
         lines.append(header)
         for evt in grouped[d]:
             lines.append(evt)
@@ -250,7 +250,7 @@ def build_korean_weekly_schedule(
     lines = []
     for d in target_dates:
         weekday_ko = WEEKDAYS_KO[d.weekday()]
-        header = f"<b>{d.month}월 {d.day}일 ({weekday_ko})</b>"
+        header = f"**{d.month}월 {d.day}일 ({weekday_ko})**"
         lines.append(header)
         for evt in grouped[d]:
             lines.append(evt)
