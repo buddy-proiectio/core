@@ -318,5 +318,106 @@ class TestTranslationCleaner(unittest.TestCase):
                 self.assertEqual(TranslationCleaner.clean(input_text), expected)
 
 
+class TestMacroTranslationCache(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.news_file = os.path.join(self.test_dir, "daily_news_20260721.json")
+        self.project_root_patch = patch(
+            "translator.os.path.dirname", return_value=self.test_dir
+        )
+        self.project_root_patch.start()
+
+        # Create directories
+        os.makedirs(os.path.join(self.test_dir, "config"), exist_ok=True)
+        os.makedirs(os.path.join(self.test_dir, "data"), exist_ok=True)
+
+        self.map_file = os.path.join(
+            self.test_dir, "config", "macro_translation_map.json"
+        )
+        self.cache_file = os.path.join(
+            self.test_dir, "data", "macro_translation_cache.json"
+        )
+
+    def tearDown(self):
+        self.project_root_patch.stop()
+        shutil.rmtree(self.test_dir)
+
+    @patch("translator.translate_macro_events")
+    def test_translate_and_cache_weekly_schedule(self, mock_translate):
+        # Setup static map and cache
+        with open(self.map_file, "w", encoding="utf-8") as f:
+            json.dump({"CPI (YoY)": "소비자물가지수 (YoY)"}, f)
+
+        with open(self.cache_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "2026-07-20_Unemployment Rate": "실업률",
+                    "2026-07-19_Old Event": "오래된 이벤트",
+                },
+                f,
+            )
+
+        # Setup news file
+        news_data = {
+            "weekly_schedule": [
+                {
+                    "name": "CPI (YoY)",
+                    "importance": "high",
+                    "korean_name": "",
+                    "utc_time": "2026-07-22T14:30:00Z",
+                },
+                {
+                    "name": "Unemployment Rate",
+                    "importance": "high",
+                    "korean_name": "",
+                    "utc_time": "2026-07-20T14:30:00Z",
+                },
+                {
+                    "name": "New Indicator",
+                    "importance": "medium",
+                    "korean_name": "",
+                    "utc_time": "2026-07-22T15:00:00Z",
+                },
+                {
+                    "name": "Some Earnings",
+                    "importance": "earnings",
+                    "korean_name": "",
+                    "utc_time": "2026-07-22T00:00:00Z",
+                },
+            ]
+        }
+        with open(self.news_file, "w", encoding="utf-8") as f:
+            json.dump(news_data, f)
+
+        mock_translate.return_value = {"New Indicator": "새로운 지표"}
+
+        from translator import translate_and_cache_weekly_schedule_events
+
+        translate_and_cache_weekly_schedule_events(self.news_file, "20260721")
+
+        # Verify news file in-place update
+        with open(self.news_file, "r", encoding="utf-8") as f:
+            updated_news = json.load(f)
+
+        events = updated_news["weekly_schedule"]
+        self.assertEqual(
+            events[0]["korean_name"], "소비자물가지수 (YoY)"
+        )  # From static map
+        self.assertEqual(events[1]["korean_name"], "실업률")  # From cache
+        self.assertEqual(events[2]["korean_name"], "새로운 지표")  # Translated by mock
+        self.assertEqual(events[3]["korean_name"], "")  # Earnings call untouched
+
+        # Verify cache cleanup and updates (today is 2026-07-21, yesterday is 2026-07-20. 2026-07-19 is D-2, so deleted)
+        with open(self.cache_file, "r", encoding="utf-8") as f:
+            updated_cache = json.load(f)
+
+        self.assertIn("2026-07-20_Unemployment Rate", updated_cache)
+        self.assertIn("2026-07-22_New Indicator", updated_cache)
+        self.assertEqual(updated_cache["2026-07-22_New Indicator"], "새로운 지표")
+        self.assertNotIn(
+            "2026-07-19_Old Event", updated_cache
+        )  # Cleans up old cache entry
+
+
 if __name__ == "__main__":
     unittest.main()

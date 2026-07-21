@@ -184,6 +184,28 @@ def build_korean_weekly_schedule(
     if "GOOG" not in TICKER_TO_KOREAN_NAME and "GOOGL" in TICKER_TO_KOREAN_NAME:
         TICKER_TO_KOREAN_NAME["GOOG"] = TICKER_TO_KOREAN_NAME["GOOGL"]
 
+    # Load macro translation map
+    MACRO_TRANSLATION_MAP = {}
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        map_file = os.path.join(project_root, "config", "macro_translation_map.json")
+        if os.path.exists(map_file):
+            with open(map_file, "r", encoding="utf-8") as f:
+                MACRO_TRANSLATION_MAP = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load macro_translation_map.json: {e}")
+
+    # Load macro translation cache
+    MACRO_TRANSLATION_CACHE = {}
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cache_file = os.path.join(project_root, "data", "macro_translation_cache.json")
+        if os.path.exists(cache_file):
+            with open(cache_file, "r", encoding="utf-8") as f:
+                MACRO_TRANSLATION_CACHE = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load macro_translation_cache.json: {e}")
+
     ny_tz = pytz.timezone("America/New_York")
 
     # Determine base date
@@ -236,7 +258,17 @@ def build_korean_weekly_schedule(
             company_name = TICKER_TO_KOREAN_NAME.get(ticker, ticker)
             evt_str = f"{company_name} 실적발표"
         else:
-            clean_ko_name = korean_name if korean_name else name
+            clean_ko_name = korean_name
+            if not clean_ko_name:
+                date_part = utc_time_str[:10]
+                cache_key = f"{date_part}_{name}"
+                if name in MACRO_TRANSLATION_MAP:
+                    clean_ko_name = MACRO_TRANSLATION_MAP[name]
+                elif cache_key in MACRO_TRANSLATION_CACHE:
+                    clean_ko_name = MACRO_TRANSLATION_CACHE[cache_key]
+                else:
+                    clean_ko_name = name
+
             if country and clean_ko_name.startswith(country):
                 clean_ko_name = clean_ko_name[len(country) :].strip()
                 clean_ko_name = clean_ko_name.lstrip("-/ ").strip()

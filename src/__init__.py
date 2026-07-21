@@ -544,6 +544,7 @@ def _cleanup_data_files(data_dir: str):
                 "signals.json",
                 "extracted_state_pre.json",
                 "translated_state_pre.json",
+                "macro_translation_cache.json",
             ) or filename.startswith("."):
                 continue
 

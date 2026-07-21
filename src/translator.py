@@ -2,7 +2,7 @@
 Translator module for Buddy Core.
 
 This module translates English markdown reports to publication-ready Korean reports.
-It leverages Google AI Studio's Gemma model chain (defaulting to gemma-4-31b) in JSON mode,
+It leverages Google AI Studio's Gemini and Gemma model chain (defaulting to gemini-3-1-flash-lite) in JSON mode,
 maintains translation caches to minimize redundant translation costs, and localizes schedules.
 """
 
@@ -562,6 +562,249 @@ def call_gemini_translator_api(
     else:
         raise TranslationError(
             "Failed to translate batch: All fallback models in the chain failed."
+        )
+
+
+def translate_macro_events(event_names: List[str]) -> Dict[str, str]:
+    """
+    Translates a list of unique English macroeconomic indicator names or holidays into Korean.
+    Uses Gemini API in JSON mode and handles model fallbacks.
+    """
+    if not event_names:
+        return {}
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.error(
+            "GEMINI_API_KEY environment variable is not defined. Skipping macro translation."
+        )
+        return {}
+
+    headers = {"Content-Type": "application/json"}
+
+    system_prompt = (
+        "You are a professional financial translator. Translate the given macroeconomic indicator names or holidays into standard Korean.\n"
+        "Keep standard formatting clean. Translate suffixes like '(YoY)' to '(전년 대비)', '(MoM)' to '(전월 대비)', '(QoQ)' to '(전분기 대비)' if appropriate.\n"
+        "You MUST output your response strictly as a JSON object containing a 'translations' key mapped to a dictionary/object of original English name to Korean translation.\n"
+        "Example output:\n"
+        "{\n"
+        '  "translations": {\n'
+        '    "Marine Day": "바다의 날",\n'
+        '    "Pending Home Sales (MoM)": "펜딩 주택판매지수 (전월 대비)"\n'
+        "  }\n"
+        "}"
+    )
+
+    user_prompt = json.dumps({"events": event_names}, ensure_ascii=False)
+
+    last_err = None
+    for model in MODEL_CHAIN:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+        try:
+            payload = build_payload(user_prompt, model, system_prompt)
+            logger.info(
+                f"Calling API for macro events translation of size {len(event_names)} using model {model}..."
+            )
+            resp = requests.post(url, json=payload, headers=headers, timeout=30)
+
+            if resp.status_code == 429:
+                logger.warning(
+                    f"Rate limit (429) hit for model {model}. Skipping to next model..."
+                )
+                continue
+            if resp.status_code in (403, 404):
+                logger.warning(
+                    f"Model {model} returned HTTP {resp.status_code}. Skipping this model..."
+                )
+                continue
+            if resp.status_code in (500, 503):
+                logger.warning(
+                    f"Server error ({resp.status_code}) from model {model}. Skipping this model..."
+                )
+                continue
+
+            resp.raise_for_status()
+            res_data = resp.json()
+
+            candidates = res_data.get("candidates", [])
+            if not candidates:
+                raise ValueError(f"No candidates returned from model {model}")
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                raise ValueError(f"No parts found in candidate from model {model}")
+
+            content_text = ""
+            for part in parts:
+                if not part.get("thought"):
+                    content_text = part.get("text", "").strip()
+                    break
+            if not content_text and parts:
+                content_text = parts[0].get("text", "").strip()
+
+            if content_text.startswith("```"):
+                content_text = re.sub(
+                    r"^```(?:json)?\n", "", content_text, flags=re.IGNORECASE
+                )
+                content_text = re.sub(r"\n```$", "", content_text)
+            content_text = content_text.strip()
+
+            result = json.loads(content_text)
+            translations = result.get("translations", {})
+            logger.info(
+                f"Successfully translated {len(translations)} macro events with {model}"
+            )
+            return translations
+
+        except Exception as e:
+            logger.warning(f"Model {model} failed to translate macro events: {e}")
+            last_err = e
+            continue
+
+    logger.error(
+        f"Failed to translate macro events: All models in chain failed. Last error: {last_err}"
+    )
+    return {}
+
+
+def translate_and_cache_weekly_schedule_events(news_file: str, today_str: str) -> None:
+    """
+    Scans weekly schedule in news_file, translates untranslated macro indicators,
+    saves translations to data/macro_translation_cache.json, cleans old cache entries,
+    and updates news_file in-place.
+    """
+    if not os.path.exists(news_file):
+        logger.warning(
+            f"News file {news_file} does not exist. Skipping weekly schedule translation."
+        )
+        return
+
+    try:
+        with open(news_file, "r", encoding="utf-8") as f:
+            news_data = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to read news file for weekly schedule translation: {e}")
+        return
+
+    weekly_schedule = news_data.get("weekly_schedule", [])
+    if not weekly_schedule:
+        logger.info("No weekly schedule events found in news file.")
+        return
+
+    # Load static map
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    map_file = os.path.join(project_root, "config", "macro_translation_map.json")
+    macro_map = {}
+    if os.path.exists(map_file):
+        try:
+            with open(map_file, "r", encoding="utf-8") as f:
+                macro_map = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load macro_translation_map.json: {e}")
+
+    # Load dynamic cache
+    cache_file = os.path.join(project_root, "data", "macro_translation_cache.json")
+    macro_cache = {}
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                macro_cache = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load macro_translation_cache.json: {e}")
+
+    # Find events needing translation (importance not in earnings/holiday, and korean_name is empty)
+    to_translate_events = []
+    to_translate_names = set()
+
+    for event in weekly_schedule:
+        importance = event.get("importance", "medium")
+        if importance in ("earnings", "holiday"):
+            continue
+
+        korean_name = event.get("korean_name", "").strip()
+        name = event.get("name", "").strip()
+        if not name:
+            continue
+
+        utc_time_str = event.get("utc_time") or ""
+        date_part = utc_time_str[:10]
+        cache_key = f"{date_part}_{name}"
+
+        # 1. Check if already has a korean_name
+        if korean_name:
+            continue
+
+        # 2. Check static map
+        if name in macro_map:
+            event["korean_name"] = macro_map[name]
+            continue
+
+        # 3. Check dynamic cache
+        if cache_key in macro_cache:
+            event["korean_name"] = macro_cache[cache_key]
+            continue
+
+        # 4. Otherwise, queue for translation
+        to_translate_events.append((event, name, cache_key))
+        to_translate_names.add(name)
+
+    # Call translation if there are new items
+    if to_translate_names:
+        translations = translate_macro_events(list(to_translate_names))
+        for event, name, cache_key in to_translate_events:
+            translated_val = translations.get(name)
+            if translated_val:
+                event["korean_name"] = translated_val
+                macro_cache[cache_key] = translated_val
+            else:
+                logger.warning(
+                    f"Could not translate macro event '{name}', falling back to English."
+                )
+
+    # Clean up cache: remove entries older than D-1 (yesterday)
+    try:
+        from datetime import timedelta
+
+        today_date = datetime.strptime(today_str, "%Y%m%d").date()
+        yesterday_date = today_date - timedelta(days=1)
+
+        cleaned_cache = {}
+        for key, val in macro_cache.items():
+            if "_" in key:
+                date_part_str, _ = key.split("_", 1)
+                try:
+                    entry_date = datetime.strptime(date_part_str, "%Y-%m-%d").date()
+                    if entry_date >= yesterday_date:
+                        cleaned_cache[key] = val
+                except ValueError:
+                    cleaned_cache[key] = val
+            else:
+                cleaned_cache[key] = val
+        macro_cache = cleaned_cache
+    except Exception as e:
+        logger.error(f"Failed to clean up macro translation cache: {e}")
+
+    # Write updated cache
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(macro_cache, f, ensure_ascii=False, indent=2)
+        logger.info(
+            f"Updated macro translation cache. Active cache size: {len(macro_cache)}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to write macro translation cache: {e}")
+
+    # Write updated news file in-place
+    try:
+        news_data["weekly_schedule"] = weekly_schedule
+        with open(news_file, "w", encoding="utf-8") as f:
+            json.dump(news_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Successfully updated weekly schedule translations in {news_file}")
+    except Exception as e:
+        logger.error(
+            f"Failed to update news file with weekly schedule translations: {e}"
         )
 
 
@@ -1217,6 +1460,10 @@ def run_translator(
 
     try:
         logger.info(f"Running Translator (Type: {report_type}) for date {today_str}")
+
+        # Translate and cache macro events in weekly schedule
+        news_file = os.path.join(data_dir, f"daily_news_{today_str}.json")
+        translate_and_cache_weekly_schedule_events(news_file, today_str)
 
         if report_type == "incremental":
             try:
