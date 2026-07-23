@@ -7,7 +7,7 @@ Buddy Core is an automated, multi-agent Intelligence Pipeline designed to act as
 ## Setup & Dependencies
 
 ### 1. System Requirements
-- **Ingestion Server**: A remote VM (such as Oracle Cloud) running the Sieve ingestion bot 24/7. Refer to the [sieve repository](https://github.com/buddy-proiectio/sieve) for details.
+- **Ingestion Server**: A remote VM (such as Oracle Cloud) running the Sieve ingestion bot 24/7. Refer to the [sieve repository](https://github.com/as-proiectio/sieve) for details.
 - **Orchestration Environment**: A local or server environment (macOS or Linux) to run the pipeline modules.
 
 ### 2. Environment Setup
