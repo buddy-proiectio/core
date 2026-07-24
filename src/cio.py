@@ -1,5 +1,5 @@
 """
-CIO module for Buddy Core.
+CIO module for Alpha Signals Core.
 
 This module synthesizes daily reports with a professional, billionaire-mentor styled narrative
 (Daily Point) and executes the Premarket 3D news selection system (Macro, Surprise, Trend).

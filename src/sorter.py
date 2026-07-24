@@ -1,5 +1,5 @@
 """
-Sorter module for Buddy Core.
+Sorter module for Alpha Signals Core.
 
 This module routes raw incoming news articles into distinct mega-trends (AI, Bitcoin,
 Semiconductor, Aerospace, etc.) based on keyword scores defined in the configuration.

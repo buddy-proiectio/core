@@ -1,5 +1,5 @@
 """
-Translation cleaner module for Buddy Core.
+Translation cleaner module for Alpha Signals Core.
 
 This module provides post-processing cleanup and correction for Korean translations,
 ensuring publication-ready quality.

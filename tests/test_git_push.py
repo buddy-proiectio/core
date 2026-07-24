@@ -136,10 +136,10 @@ def test_run_all_git_push_integration_full(
     mock_is_trading_day.return_value = True
 
     # We want os.path.exists to return:
-    # False for buddy.lock
+    # False for as.lock
     # True for Korean report file so we trigger the second push
     def side_effect_exists(path):
-        if "buddy.lock" in path:
+        if "as.lock" in path:
             return False
         if "alpha_signal" in path and "_ko.md" in path:
             return True
@@ -193,10 +193,10 @@ def test_run_all_git_push_integration_premarket(
     mock_is_trading_day.return_value = True
 
     # We want os.path.exists to return:
-    # False for buddy.lock
+    # False for as.lock
     # True for Korean report file so we trigger the second push
     def side_effect_exists(path):
-        if "buddy.lock" in path:
+        if "as.lock" in path:
             return False
         if "alpha_signal_premarket" in path and "_ko.md" in path:
             return True

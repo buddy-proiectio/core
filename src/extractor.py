@@ -1,5 +1,5 @@
 """
-Extractor module for Buddy Core.
+Extractor module for Alpha Signals Core.
 
 This module extracts deeply actionable KPIs and raw fact sentences from sorted articles
 using a local Ollama LLM (defaults to llama3.1). It performs strict text pre-cleaning

@@ -1,5 +1,5 @@
 """
-Translator module for Buddy Core.
+Translator module for Alpha Signals Core.
 
 This module translates English markdown reports to publication-ready Korean reports.
 It leverages Google AI Studio's Gemini and Gemma model chain (defaulting to gemini-3-1-flash-lite) in JSON mode,
@@ -1605,7 +1605,7 @@ def run_translator(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Buddy Core Translation Pipeline")
+    parser = argparse.ArgumentParser(description="Alpha Signals Core Translation Pipeline")
     parser.add_argument(
         "--type",
         choices=["full", "premarket", "incremental"],

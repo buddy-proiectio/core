@@ -1,5 +1,5 @@
 """
-Orchestration and Main Execution Loop for the Buddy Core Pipeline.
+Orchestration and Main Execution Loop for the Alpha Signals Core Pipeline.
 
 This module acts as the pipeline driver, pulling news data via SCP from the Sieve
 scraping server, managing active lock states to prevent duplicate executions,
@@ -303,7 +303,7 @@ def run_all(report_type: str = "full"):
     # If the process is alive but has been running for > 2 hours, it acts as a watchdog, sending SIGKILL
     # to terminate the hung process and unblock subsequent scheduler runs.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    lock_file = os.path.join(project_root, "logs", "buddy.lock")
+    lock_file = os.path.join(project_root, "logs", "as.lock")
 
     if os.path.exists(lock_file):
         try:
@@ -340,7 +340,7 @@ def run_all(report_type: str = "full"):
 
                 if elapsed_hours >= 2.0:
                     logger.warning(
-                        f"Detected hung buddy process (PID {lock_pid}, running for {elapsed_hours:.1f} hours). Forcefully terminating the hung process to clear bottleneck."
+                        f"Detected hung Alpha Signals Core process (PID {lock_pid}, running for {elapsed_hours:.1f} hours). Forcefully terminating the hung process to clear bottleneck."
                     )
                     try:
                         os.kill(lock_pid, signal.SIGKILL)
@@ -373,7 +373,7 @@ def run_all(report_type: str = "full"):
         with open(lock_file, "w") as f:
             f.write(str(os.getpid()))
 
-        logger.info(f"Starting Buddy Core Pipeline (Type: {report_type})...")
+        logger.info(f"Starting Alpha Signals Core Pipeline (Type: {report_type})...")
 
         # Bypass weekend execution skip only for incremental runs
         if report_type != "incremental" and not is_us_trading_day():
@@ -395,10 +395,10 @@ def run_all(report_type: str = "full"):
         run_extractor(report_type=report_type, target_date=today_str)
         logger.info("-----------------------------------------------------")
 
-        # Release buddy.lock early after extraction completes
+        # Release as.lock early after extraction completes
         if os.path.exists(lock_file):
             os.remove(lock_file)
-            logger.info("Main buddy.lock released early after successful extraction.")
+            logger.info("Main as.lock released early after successful extraction.")
 
         if report_type == "incremental":
             logger.info("Running Translator for Incremental...")
@@ -513,7 +513,7 @@ def run_all(report_type: str = "full"):
                     "Full pipeline completed successfully. Deferring cleanup until premarket run."
                 )
 
-            logger.info("Successfully completed Buddy Core Pipeline!")
+            logger.info("Successfully completed Alpha Signals Core Pipeline!")
         else:
             logger.warning(
                 "Formatter did not return success. Skipping translation and cleanup."
@@ -560,7 +560,7 @@ def _cleanup_data_files(data_dir: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Buddy Core Pipeline")
+    parser = argparse.ArgumentParser(description="Alpha Signals Core Pipeline")
     parser.add_argument(
         "--type",
         choices=["full", "premarket", "incremental"],

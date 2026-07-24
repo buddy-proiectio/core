@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.buddy.incremental</string>
+    <string>com.alphasignals.incremental</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/YOUR_USERNAME/workspaces/buddy/core/scripts/buddy-core-incremental.sh</string>
+        <string>/Users/YOUR_USERNAME/workspaces/as-proiectio/core/scripts/alphasignals-core-incremental.sh</string>
     </array>
 
     <key>StartCalendarInterval</key>

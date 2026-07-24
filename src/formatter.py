@@ -1,5 +1,5 @@
 """
-Formatter module for Buddy Core.
+Formatter module for Alpha Signals Core.
 
 This module formats and structures daily markdown reports. It builds timezone-aligned
 weekly schedules (resolving the midnight timezone distortion bug), standardizes earnings
@@ -602,7 +602,7 @@ def run_formatter(input_file: str, output_file: str, lang: str = "en"):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Buddy Core Report Formatter")
+    parser = argparse.ArgumentParser(description="Alpha Signals Core Report Formatter")
     parser.add_argument("--input", required=True, help="Path to input text report")
     parser.add_argument(
         "--output", required=True, help="Path to output markdown report"
